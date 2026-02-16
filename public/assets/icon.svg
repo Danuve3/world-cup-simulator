@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="64" fill="#0a0a1a"/>
+  <circle cx="256" cy="240" r="160" fill="none" stroke="#00f0ff" stroke-width="8"/>
+  <!-- Soccer ball pentagons -->
+  <polygon points="256,120 290,148 278,188 234,188 222,148" fill="#00f0ff"/>
+  <polygon points="320,200 356,228 344,268 300,268 288,228" fill="#00f0ff"/>
+  <polygon points="192,200 228,228 216,268 172,268 160,228" fill="#00f0ff"/>
+  <polygon points="216,300 252,328 240,368 196,368 184,328" fill="#00f0ff"/>
+  <polygon points="296,300 332,328 320,368 276,368 264,328" fill="#00f0ff"/>
+  <!-- Trophy -->
+  <path d="M230,410 L230,430 L282,430 L282,410" fill="#ffd700"/>
+  <path d="M220,430 L292,430 L292,445 L220,445" fill="#ffd700"/>
+  <text x="256" y="490" font-family="monospace" font-size="32" fill="#00f0ff" text-anchor="middle" font-weight="bold">WC</text>
+</svg>
