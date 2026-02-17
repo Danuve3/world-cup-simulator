@@ -12,7 +12,10 @@ export function renderDashboard(container, state) {
   if (phase.phase === 'DRAW') {
     const drawSequence = state.tournament.draw.drawSequence;
     const totalTeams = drawSequence.length;
-    const revealedCount = Math.floor(phase.phaseProgress * totalTeams);
+    const drawDurationMs = (SCHEDULE.DRAW.end - SCHEDULE.DRAW.start) * 60 * 1000;
+    const revealIntervalMs = drawDurationMs / totalTeams;
+    const phaseElapsedMs = (state.timestamp - state.cycleStart) - (SCHEDULE.DRAW.start * 60 * 1000);
+    const revealedCount = Math.min(totalTeams, Math.max(0, Math.floor(phaseElapsedMs / revealIntervalMs)));
 
     if (revealedCount === lastDrawRenderedCount && container.childNodes.length > 0) {
       updateDrawCountdownInPlace(state, revealedCount, totalTeams);
@@ -24,6 +27,7 @@ export function renderDashboard(container, state) {
       const newlyRevealed = drawSequence[revealedCount - 1];
       if (newlyRevealed) {
         ballTeam = newlyRevealed.team;
+        ballGroup = newlyRevealed.group;
         showingBall = true;
         if (drawBallTimeoutId) clearTimeout(drawBallTimeoutId);
         drawBallTimeoutId = setTimeout(() => {
@@ -134,18 +138,19 @@ function getPhaseStyle(phase) {
 
 let showingBall = false;
 let ballTeam = null;
+let ballGroup = -1;
 let lastDrawRenderedCount = -1;
 let drawBallTimeoutId = null;
+let drawTeamsExpanded = false;
 
 function renderDrawPhase(state) {
   const { tournament, phase, cycleStart, timestamp } = state;
   const drawSequence = tournament.draw.drawSequence;
   const totalTeams = drawSequence.length;
-  const revealedCount = Math.floor(phase.phaseProgress * totalTeams);
-
   const drawDurationMs = (SCHEDULE.DRAW.end - SCHEDULE.DRAW.start) * 60 * 1000;
   const revealIntervalMs = drawDurationMs / totalTeams;
   const phaseElapsedMs = (timestamp - cycleStart) - (SCHEDULE.DRAW.start * 60 * 1000);
+  const revealedCount = Math.min(totalTeams, Math.max(0, Math.floor(phaseElapsedMs / revealIntervalMs)));
   const nextRevealMs = (revealedCount + 1) * revealIntervalMs - phaseElapsedMs;
 
   const children = [
@@ -169,7 +174,11 @@ function renderDrawPhase(state) {
             children: [
               flag(ballTeam.code, 32),
               el('span', { text: ballTeam.name, className: 'text-sm font-bold mt-1' }),
-            ],
+              ballGroup >= 0 ? el('span', {
+                text: `Grupo ${String.fromCharCode(65 + ballGroup)}`,
+                className: 'text-[10px] text-text-muted',
+              }) : null,
+            ].filter(Boolean),
           }),
         ],
       })
@@ -194,29 +203,52 @@ function renderDrawPhase(state) {
     drawSequence.slice(0, revealedCount).map(d => d.team.code)
   );
   const allTeamsSorted = [...TEAMS].sort((a, b) => a.name.localeCompare(b.name));
+  const teamListContent = el('div', {
+    className: 'flex flex-wrap gap-2',
+    style: { display: drawTeamsExpanded ? 'flex' : 'none' },
+    children: allTeamsSorted.map(team => {
+      const revealed = revealedCodes.has(team.code);
+      return el('div', {
+        className: `flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all ${
+          revealed ? 'bg-accent-light text-accent font-medium' : 'bg-bg-surface text-text-muted'
+        }`,
+        children: [
+          flag(team.code, 16),
+          el('span', { text: team.name }),
+        ],
+      });
+    }),
+  });
+
+  const chevronUp = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><polyline points="18,15 12,9 6,15"/></svg>';
+  const chevronDown = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><polyline points="6,9 12,15 18,9"/></svg>';
+
+  const chevronEl = el('span', { html: drawTeamsExpanded ? chevronUp : chevronDown, className: 'text-text-muted' });
+  const contentWrapper = el('div', { className: drawTeamsExpanded ? 'mt-3' : '', children: [teamListContent] });
+
   children.push(
     el('div', {
       className: 'card p-4 mb-4',
       children: [
-        el('div', {
-          className: 'text-xs font-bold text-text-muted mb-3 uppercase tracking-wider',
-          text: 'Selecciones',
+        el('button', {
+          className: 'flex items-center justify-between w-full cursor-pointer',
+          events: {
+            click: () => {
+              drawTeamsExpanded = !drawTeamsExpanded;
+              teamListContent.style.display = drawTeamsExpanded ? 'flex' : 'none';
+              chevronEl.innerHTML = drawTeamsExpanded ? chevronUp : chevronDown;
+              contentWrapper.className = drawTeamsExpanded ? 'mt-3' : '';
+            },
+          },
+          children: [
+            el('span', {
+              className: 'text-xs font-bold text-text-muted uppercase tracking-wider',
+              text: `Selecciones (${revealedCodes.size}/${allTeamsSorted.length})`,
+            }),
+            chevronEl,
+          ],
         }),
-        el('div', {
-          className: 'flex flex-wrap gap-2',
-          children: allTeamsSorted.map(team => {
-            const revealed = revealedCodes.has(team.code);
-            return el('div', {
-              className: `flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all ${
-                revealed ? 'bg-accent-light text-accent font-medium' : 'bg-bg-surface text-text-muted'
-              }`,
-              children: [
-                flag(team.code, 16),
-                el('span', { text: team.name }),
-              ],
-            });
-          }),
-        }),
+        contentWrapper,
       ],
     })
   );
