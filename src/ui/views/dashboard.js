@@ -1,14 +1,50 @@
 import { el, flag, formatMinutes, formatCountdown, countdownDisplay, formatTime, getEditionYear } from '../components.js';
 import { SCHEDULE } from '../../constants.js';
+import { TEAMS } from '../../engine/teams.js';
 
 /**
  * Dashboard / "En Vivo" view.
  */
 export function renderDashboard(container, state) {
-  container.innerHTML = '';
-
   const { phase } = state;
 
+  // Optimized draw phase: skip full re-render when only countdown needs updating
+  if (phase.phase === 'DRAW') {
+    const drawSequence = state.tournament.draw.drawSequence;
+    const totalTeams = drawSequence.length;
+    const revealedCount = Math.floor(phase.phaseProgress * totalTeams);
+
+    if (revealedCount === lastDrawRenderedCount && container.childNodes.length > 0) {
+      updateDrawCountdownInPlace(state, revealedCount, totalTeams);
+      return;
+    }
+
+    // New team revealed — trigger ball animation
+    if (revealedCount > lastDrawRenderedCount && lastDrawRenderedCount >= 0 && revealedCount <= totalTeams) {
+      const newlyRevealed = drawSequence[revealedCount - 1];
+      if (newlyRevealed) {
+        ballTeam = newlyRevealed.team;
+        showingBall = true;
+        if (drawBallTimeoutId) clearTimeout(drawBallTimeoutId);
+        drawBallTimeoutId = setTimeout(() => {
+          showingBall = false;
+          drawBallTimeoutId = null;
+          lastDrawRenderedCount = -1; // Force re-render on next tick
+        }, 1800);
+      }
+    }
+
+    lastDrawRenderedCount = revealedCount;
+  } else {
+    lastDrawRenderedCount = -1;
+    if (drawBallTimeoutId) {
+      clearTimeout(drawBallTimeoutId);
+      drawBallTimeoutId = null;
+      showingBall = false;
+    }
+  }
+
+  container.innerHTML = '';
   container.appendChild(createHero(state));
 
   switch (phase.phase) {
@@ -96,9 +132,10 @@ function getPhaseStyle(phase) {
 
 /* ── Draw phase ── */
 
-let lastDrawRevealed = -1;
 let showingBall = false;
 let ballTeam = null;
+let lastDrawRenderedCount = -1;
+let drawBallTimeoutId = null;
 
 function renderDrawPhase(state) {
   const { tournament, phase, cycleStart, timestamp } = state;
@@ -110,17 +147,6 @@ function renderDrawPhase(state) {
   const revealIntervalMs = drawDurationMs / totalTeams;
   const phaseElapsedMs = (timestamp - cycleStart) - (SCHEDULE.DRAW.start * 60 * 1000);
   const nextRevealMs = (revealedCount + 1) * revealIntervalMs - phaseElapsedMs;
-
-  // Detect newly revealed team for ball animation
-  if (revealedCount > lastDrawRevealed && lastDrawRevealed >= 0 && revealedCount <= totalTeams) {
-    const newlyRevealed = drawSequence[revealedCount - 1];
-    if (newlyRevealed) {
-      ballTeam = newlyRevealed.team;
-      showingBall = true;
-      setTimeout(() => { showingBall = false; }, 1800);
-    }
-  }
-  lastDrawRevealed = revealedCount;
 
   const children = [
     el('div', {
@@ -157,16 +183,17 @@ function renderDrawPhase(state) {
         className: 'card p-5 mb-5 text-center',
         children: [
           el('p', { text: 'Siguiente equipo en', className: 'text-xs text-text-muted mb-3' }),
-          countdownDisplay(msLeft, { size: 'sm' }),
+          el('div', { id: 'draw-countdown-value', children: [countdownDisplay(msLeft, { size: 'sm' })] }),
         ],
       })
     );
   }
 
-  // Team list panel — show all 32 teams
+  // Team list — all teams sorted alphabetically
   const revealedCodes = new Set(
     drawSequence.slice(0, revealedCount).map(d => d.team.code)
   );
+  const allTeamsSorted = [...TEAMS].sort((a, b) => a.name.localeCompare(b.name));
   children.push(
     el('div', {
       className: 'card p-4 mb-4',
@@ -177,15 +204,15 @@ function renderDrawPhase(state) {
         }),
         el('div', {
           className: 'flex flex-wrap gap-2',
-          children: drawSequence.map(d => {
-            const revealed = revealedCodes.has(d.team.code);
+          children: allTeamsSorted.map(team => {
+            const revealed = revealedCodes.has(team.code);
             return el('div', {
               className: `flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all ${
                 revealed ? 'bg-accent-light text-accent font-medium' : 'bg-bg-surface text-text-muted'
               }`,
               children: [
-                flag(d.team.code, 16),
-                el('span', { text: d.team.name }),
+                flag(team.code, 16),
+                el('span', { text: team.name }),
               ],
             });
           }),
@@ -232,6 +259,20 @@ function renderDrawPhase(state) {
   );
 
   return el('div', { children });
+}
+
+function updateDrawCountdownInPlace(state, revealedCount, totalTeams) {
+  const countdownEl = document.getElementById('draw-countdown-value');
+  if (!countdownEl) return;
+
+  const drawDurationMs = (SCHEDULE.DRAW.end - SCHEDULE.DRAW.start) * 60 * 1000;
+  const revealIntervalMs = drawDurationMs / totalTeams;
+  const phaseElapsedMs = (state.timestamp - state.cycleStart) - (SCHEDULE.DRAW.start * 60 * 1000);
+  const nextRevealMs = (revealedCount + 1) * revealIntervalMs - phaseElapsedMs;
+  const msLeft = Math.max(0, nextRevealMs);
+
+  countdownEl.innerHTML = '';
+  countdownEl.appendChild(countdownDisplay(msLeft, { size: 'sm' }));
 }
 
 /* ── Live phase ── */

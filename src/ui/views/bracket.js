@@ -1,5 +1,76 @@
 import { el, flag } from '../components.js';
-import { getKnockoutMatchTiming } from '../../engine/timeline.js';
+import { getKnockoutMatchTiming, getGroupMatchTiming } from '../../engine/timeline.js';
+import { SCHEDULE } from '../../constants.js';
+
+// R16 bracket structure: which group pairs feed each match
+const R16_GROUPS = [
+  [0, 1], // 1A vs 2B
+  [2, 3], // 1C vs 2D
+  [4, 5], // 1E vs 2F
+  [6, 7], // 1G vs 2H
+  [1, 0], // 1B vs 2A
+  [3, 2], // 1D vs 2C
+  [5, 4], // 1F vs 2E
+  [7, 6], // 1H vs 2G
+];
+
+function isGroupComplete(g, cycleMinute) {
+  const t = getGroupMatchTiming(2, g, 0);
+  return t.endMin <= cycleMinute;
+}
+
+function sanitizeKnockout(ko, cycleMinute) {
+  const ph = name => ({ code: null, name });
+  const isMatchDone = (round, idx) => {
+    const t = getKnockoutMatchTiming(round, idx);
+    return t.endMin <= cycleMinute;
+  };
+
+  const r16 = ko.r16.map((m, i) => {
+    const [gA, gB] = R16_GROUPS[i];
+    return {
+      ...m,
+      teamA: isGroupComplete(gA, cycleMinute) ? m.teamA : ph(`1${String.fromCharCode(65 + gA)}`),
+      teamB: isGroupComplete(gB, cycleMinute) ? m.teamB : ph(`2${String.fromCharCode(65 + gB)}`),
+    };
+  });
+
+  const qf = ko.qf.map((m, i) => ({
+    ...m,
+    teamA: isMatchDone('R16', i * 2) ? m.teamA : ph('?'),
+    teamB: isMatchDone('R16', i * 2 + 1) ? m.teamB : ph('?'),
+  }));
+
+  const sf = ko.sf.map((m, i) => ({
+    ...m,
+    teamA: isMatchDone('QF', i * 2) ? m.teamA : ph('?'),
+    teamB: isMatchDone('QF', i * 2 + 1) ? m.teamB : ph('?'),
+  }));
+
+  const thirdPlace = {
+    ...ko.thirdPlace,
+    teamA: isMatchDone('SF', 0) ? ko.thirdPlace.teamA : ph('?'),
+    teamB: isMatchDone('SF', 1) ? ko.thirdPlace.teamB : ph('?'),
+  };
+
+  const finalMatch = {
+    ...ko.final,
+    teamA: isMatchDone('SF', 0) ? ko.final.teamA : ph('?'),
+    teamB: isMatchDone('SF', 1) ? ko.final.teamB : ph('?'),
+  };
+
+  return { ...ko, r16, qf, sf, thirdPlace, final: finalMatch };
+}
+
+function teamFlag(team, size) {
+  if (!team || !team.code) {
+    return el('div', {
+      className: 'inline-flex items-center justify-center bg-bg-surface rounded-[2px] shrink-0',
+      style: { width: `${size}px`, height: `${Math.round(size * 0.67)}px` },
+    });
+  }
+  return flag(team.code, size);
+}
 
 /**
  * Bracket view — Knockout stage with anti-spoiler protection.
@@ -8,7 +79,40 @@ export function renderBracket(container, state) {
   container.innerHTML = '';
 
   const { tournament, cycleMinute } = state;
-  const ko = tournament.knockout;
+
+  // Hide bracket until at least one group is complete
+  let anyGroupComplete = false;
+  for (let g = 0; g < 8; g++) {
+    if (isGroupComplete(g, cycleMinute)) {
+      anyGroupComplete = true;
+      break;
+    }
+  }
+
+  if (!anyGroupComplete) {
+    container.appendChild(
+      el('h2', { text: 'Eliminatorias', className: 'text-lg md:text-xl font-bold mb-5' })
+    );
+    container.appendChild(
+      el('div', {
+        className: 'card p-12 text-center',
+        children: [
+          el('div', { text: '\ud83c\udfc6', className: 'text-4xl mb-3' }),
+          el('p', {
+            text: cycleMinute < SCHEDULE.DRAW.end ? 'Sorteo en curso' : 'Fase de grupos en juego',
+            className: 'text-sm text-text-secondary',
+          }),
+          el('p', {
+            text: 'El bracket se revelar\u00e1 conforme finalicen los grupos',
+            className: 'text-xs text-text-muted mt-1',
+          }),
+        ],
+      })
+    );
+    return;
+  }
+
+  const ko = sanitizeKnockout(tournament.knockout, cycleMinute);
 
   // Determine which matches are completed
   const isComplete = (round, idx) => {
@@ -120,16 +224,17 @@ function createCompactMatch(match, completed) {
 }
 
 function createTeamRow(team, goals, isWinner) {
+  const hasTeam = team && team.code;
   return el('div', {
     className: `flex items-center justify-between py-0.5 px-1 rounded ${isWinner ? 'bg-accent-light' : ''}`,
     children: [
       el('div', {
         className: 'flex items-center gap-1.5 min-w-0 flex-1',
         children: [
-          flag(team.code, 14),
+          teamFlag(team, 14),
           el('span', {
-            text: team.name,
-            className: `text-[11px] truncate ${isWinner ? 'font-bold text-accent' : ''}`,
+            text: team?.name || '?',
+            className: `text-[11px] truncate ${isWinner ? 'font-bold text-accent' : hasTeam ? '' : 'text-text-muted italic'}`,
           }),
         ],
       }),
@@ -169,6 +274,9 @@ function createMobileBracket(ko, isComplete) {
 }
 
 function createBracketMatch(match, isFinal = false, completed = true) {
+  const hasTeamA = match.teamA && match.teamA.code;
+  const hasTeamB = match.teamB && match.teamB.code;
+
   if (!completed) {
     return el('div', {
       className: 'card p-3 max-w-sm opacity-50',
@@ -179,8 +287,8 @@ function createBracketMatch(match, isFinal = false, completed = true) {
             el('div', {
               className: 'flex items-center gap-2 min-w-0',
               children: [
-                flag(match.teamA.code, 20),
-                el('span', { text: match.teamA.name, className: 'text-sm' }),
+                teamFlag(match.teamA, 20),
+                el('span', { text: match.teamA?.name || '?', className: `text-sm ${hasTeamA ? '' : 'text-text-muted italic'}` }),
               ],
             }),
             el('span', { text: '?', className: 'text-sm font-bold tabular-nums text-text-muted' }),
@@ -193,8 +301,8 @@ function createBracketMatch(match, isFinal = false, completed = true) {
             el('div', {
               className: 'flex items-center gap-2 min-w-0',
               children: [
-                flag(match.teamB.code, 20),
-                el('span', { text: match.teamB.name, className: 'text-sm' }),
+                teamFlag(match.teamB, 20),
+                el('span', { text: match.teamB?.name || '?', className: `text-sm ${hasTeamB ? '' : 'text-text-muted italic'}` }),
               ],
             }),
             el('span', { text: '?', className: 'text-sm font-bold tabular-nums text-text-muted' }),
@@ -216,7 +324,7 @@ function createBracketMatch(match, isFinal = false, completed = true) {
           el('div', {
             className: 'flex items-center gap-2 min-w-0',
             children: [
-              flag(match.teamA.code, 20),
+              teamFlag(match.teamA, 20),
               el('span', { text: match.teamA.name, className: `text-sm ${winner === 'A' ? 'font-bold text-accent' : ''}` }),
             ],
           }),
@@ -233,7 +341,7 @@ function createBracketMatch(match, isFinal = false, completed = true) {
           el('div', {
             className: 'flex items-center gap-2 min-w-0',
             children: [
-              flag(match.teamB.code, 20),
+              teamFlag(match.teamB, 20),
               el('span', { text: match.teamB.name, className: `text-sm ${winner === 'B' ? 'font-bold text-accent' : ''}` }),
             ],
           }),
@@ -252,6 +360,9 @@ function createBracketMatch(match, isFinal = false, completed = true) {
 }
 
 function createFinalMatch(match, completed) {
+  const hasTeamA = match.teamA && match.teamA.code;
+  const hasTeamB = match.teamB && match.teamB.code;
+
   if (!completed) {
     return el('div', {
       className: 'card p-5 w-full max-w-xs mx-auto border-2 border-gold/20 bg-gold-light/30 opacity-60',
@@ -262,8 +373,8 @@ function createFinalMatch(match, completed) {
             el('div', {
               className: 'flex items-center gap-3 min-w-0',
               children: [
-                flag(match.teamA.code, 40),
-                el('span', { text: match.teamA.name, className: 'text-base font-semibold' }),
+                teamFlag(match.teamA, 40),
+                el('span', { text: match.teamA?.name || '?', className: `text-base ${hasTeamA ? 'font-semibold' : 'text-text-muted italic'}` }),
               ],
             }),
             el('span', { text: '?', className: 'text-xl font-bold text-text-muted' }),
@@ -276,8 +387,8 @@ function createFinalMatch(match, completed) {
             el('div', {
               className: 'flex items-center gap-3 min-w-0',
               children: [
-                flag(match.teamB.code, 40),
-                el('span', { text: match.teamB.name, className: 'text-base font-semibold' }),
+                teamFlag(match.teamB, 40),
+                el('span', { text: match.teamB?.name || '?', className: `text-base ${hasTeamB ? 'font-semibold' : 'text-text-muted italic'}` }),
               ],
             }),
             el('span', { text: '?', className: 'text-xl font-bold text-text-muted' }),
@@ -298,7 +409,7 @@ function createFinalMatch(match, completed) {
           el('div', {
             className: 'flex items-center gap-3 min-w-0',
             children: [
-              flag(match.teamA.code, 40),
+              teamFlag(match.teamA, 40),
               el('span', { text: match.teamA.name, className: `text-base ${winner === 'A' ? 'font-bold text-accent' : 'font-semibold'}` }),
             ],
           }),
@@ -315,7 +426,7 @@ function createFinalMatch(match, completed) {
           el('div', {
             className: 'flex items-center gap-3 min-w-0',
             children: [
-              flag(match.teamB.code, 40),
+              teamFlag(match.teamB, 40),
               el('span', { text: match.teamB.name, className: `text-base ${winner === 'B' ? 'font-bold text-accent' : 'font-semibold'}` }),
             ],
           }),

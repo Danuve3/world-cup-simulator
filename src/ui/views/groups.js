@@ -1,6 +1,7 @@
 import { el, flag } from '../components.js';
 import { getGroupMatchTiming } from '../../engine/timeline.js';
 import { computeStandings } from '../../engine/group-stage.js';
+import { SCHEDULE } from '../../constants.js';
 
 /**
  * Groups view — 8 group tables with anti-spoiler protection.
@@ -9,6 +10,25 @@ export function renderGroups(container, state) {
   container.innerHTML = '';
 
   const { tournament, cycleMinute } = state;
+
+  // During draw, groups aren't formed yet
+  if (cycleMinute < SCHEDULE.DRAW.end) {
+    container.appendChild(
+      el('h2', { text: 'Fase de Grupos', className: 'text-lg md:text-xl font-bold mb-5' })
+    );
+    container.appendChild(
+      el('div', {
+        className: 'card p-12 text-center',
+        children: [
+          el('div', { text: '\ud83c\udfb1', className: 'text-4xl mb-3' }),
+          el('p', { text: 'Sorteo en curso', className: 'text-sm text-text-secondary' }),
+          el('p', { text: 'Los grupos se revelar\u00e1n al finalizar el sorteo', className: 'text-xs text-text-muted mt-1' }),
+        ],
+      })
+    );
+    return;
+  }
+
   const { matches } = tournament.groupStage;
 
   // Filter to only completed matches (anti-spoiler)
