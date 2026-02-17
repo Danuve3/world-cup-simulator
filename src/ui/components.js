@@ -49,9 +49,10 @@ export function flag(code, width = 40) {
   const fetchWidth = validWidths.find(w => w >= width) || 40;
   img.src = `https://flagcdn.com/w${fetchWidth}/${code}.png`;
   img.alt = code;
-  img.className = 'inline-block rounded-[2px] shrink-0';
+  img.className = 'inline-block rounded-[2px] shrink-0 object-cover ring-1 ring-black/10';
+  const height = Math.round(width * 2 / 3);
   img.style.width = `${width}px`;
-  img.style.height = 'auto';
+  img.style.height = `${height}px`;
   img.loading = 'lazy';
   img.onerror = () => { img.style.display = 'none'; };
   return img;
@@ -123,31 +124,27 @@ export function countdownDisplay(ms, opts = {}) {
   const { size = 'md' } = opts;
   const { d, h, m, s } = formatCountdown(ms);
   const numClass = size === 'sm' ? 'text-lg min-w-[36px] h-[40px]' : 'countdown-num';
-  const labelClass = size === 'sm' ? 'text-[9px]' : 'text-[10px]';
+  const labelClass = size === 'sm' ? 'text-[11px]' : 'text-[12px]';
   const sepClass = size === 'sm' ? 'text-text-muted text-sm font-semibold' : 'text-text-muted text-lg font-bold';
 
   const units = [];
-  if (d > 0) units.push({ value: d, label: 'D' });
-  units.push({ value: h, label: 'H' }, { value: m, label: 'M' }, { value: s, label: 'S' });
+  if (d > 0) units.push({ value: d, label: 'd' });
+  units.push({ value: h, label: 'h' }, { value: m, label: 'm' }, { value: s, label: 's' });
 
-  const children = [];
-  units.forEach((u, i) => {
-    if (i > 0) {
-      children.push(el('span', { text: ':', className: `${sepClass} self-center` }));
-    }
-    children.push(
-      el('div', {
-        className: 'flex items-center gap-1',
-        children: [
-          el('div', {
-            text: String(u.value).padStart(2, '0'),
-            className: `${numClass} flex items-center justify-center bg-bg-card rounded-xl font-extrabold tabular-nums shadow-sm`,
-          }),
-          el('span', { text: u.label, className: `${labelClass} text-text-muted font-semibold` }),
-        ],
-      })
-    );
-  });
+  const children = units.map(u =>
+    el('div', {
+      className: `${numClass} flex items-center justify-center bg-bg-card rounded-xl shadow-sm`,
+      children: [
+        el('div', {
+          className: 'flex items-baseline',
+          children: [
+            el('span', { text: String(u.value).padStart(2, '0'), className: 'font-extrabold tabular-nums' }),
+            el('span', { text: u.label, className: `${labelClass} text-text-muted font-semibold pl-[3px]` }),
+          ],
+        }),
+      ],
+    })
+  );
 
   return el('div', {
     className: 'flex items-center justify-center gap-2',
@@ -159,8 +156,7 @@ export function countdownDisplay(ms, opts = {}) {
  * Get the simulated year for a given edition.
  */
 export function getEditionYear(edition) {
-  const CYCLE_MS = CYCLE_DURATION * 60 * 1000;
-  return new Date(EPOCH + edition * CYCLE_MS).getUTCFullYear();
+  return 2026 + edition * 4;
 }
 
 /**

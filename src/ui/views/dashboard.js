@@ -87,14 +87,16 @@ function createHero(state) {
             children: [
               (() => {
                 const f = flag(tournament.host.code, 80);
-                f.style.height = '34px';
-                f.style.width = 'auto';
+                f.style.height = '30px';
+                f.style.width = '44px';
+                f.style.objectFit = 'cover';
                 return f;
               })(),
               el('div', {
+                className: 'space-y-0.5',
                 children: [
-                  el('h2', { text: `Mundial ${getEditionYear(edition)}`, className: 'text-base font-bold leading-tight' }),
-                  el('span', { text: tournament.host.name, className: 'text-sm text-text-secondary leading-tight' }),
+                  el('h2', { text: `Mundial ${getEditionYear(edition)}`, className: 'text-base font-bold leading-none' }),
+                  el('span', { text: tournament.host.name, className: 'text-sm text-text-secondary leading-none block' }),
                 ],
               }),
             ],
@@ -385,75 +387,117 @@ function createNextMatchCountdown(state) {
   const nextMatchStartMs = state.cycleStart + current.startMin * 60 * 1000;
   const msUntil = nextMatchStartMs - state.timestamp;
 
-  const matchupChildren = [
-    current.teamA ? el('div', {
-      className: 'flex items-center gap-2',
-      children: [flag(current.teamA.code, 24), el('span', { text: current.teamA.name, className: 'text-sm font-medium' })],
-    }) : el('span', { text: 'TBD', className: 'text-sm text-text-muted' }),
-    el('span', { text: 'vs', className: 'text-xs text-text-muted font-medium' }),
-    current.teamB ? el('div', {
-      className: 'flex items-center gap-2',
-      children: [el('span', { text: current.teamB.name, className: 'text-sm font-medium' }), flag(current.teamB.code, 24)],
-    }) : el('span', { text: 'TBD', className: 'text-sm text-text-muted' }),
-  ].filter(Boolean);
-
   const roundLabel = current.type === 'group'
     ? `Grupo ${String.fromCharCode(65 + current.group)}`
     : current.round ? getRoundLabel(current.round) : null;
 
-  const children = [
-    el('p', { text: `Pr\u00f3ximo partido${hasCarousel ? 's' : ''} en`, className: 'text-sm text-text-muted mb-4' }),
-    el('div', { className: 'mb-5', children: [countdownDisplay(msUntil)] }),
-  ];
-
-  if (hasCarousel) {
-    children.push(
-      el('div', {
-        className: 'flex items-center justify-center gap-3',
+  // --- Team columns: flag large + name stacked ---
+  function teamColumn(team, align) {
+    const isRight = align === 'right';
+    if (!team) {
+      return el('div', {
+        className: `flex-1 flex flex-col items-center gap-2 min-w-0`,
         children: [
-          el('button', {
-            className: 'w-7 h-7 flex items-center justify-center rounded-full bg-bg-surface text-text-muted hover:text-text-primary transition-colors',
-            html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><polyline points="15,18 9,12 15,6"/></svg>',
-            events: { click: () => { carouselIndex = (carouselIndex - 1 + sameTimeMatches.length) % sameTimeMatches.length; } },
-          }),
-          el('div', {
-            className: 'flex flex-col items-center',
-            children: [
-              el('div', { className: 'flex items-center justify-center gap-4', children: matchupChildren }),
-              roundLabel ? el('p', { text: roundLabel, className: 'text-xs text-text-muted mt-2' }) : null,
-            ].filter(Boolean),
-          }),
-          el('button', {
-            className: 'w-7 h-7 flex items-center justify-center rounded-full bg-bg-surface text-text-muted hover:text-text-primary transition-colors',
-            html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><polyline points="9,18 15,12 9,6"/></svg>',
-            events: { click: () => { carouselIndex = (carouselIndex + 1) % sameTimeMatches.length; } },
+          el('div', { className: 'w-10 h-7 rounded bg-bg-surface' }),
+          el('span', { text: 'TBD', className: 'text-xs text-text-muted' }),
+        ],
+      });
+    }
+    return el('div', {
+      className: `flex-1 flex flex-col items-center gap-1.5 min-w-0`,
+      children: [
+        flag(team.code, 40),
+        el('span', {
+          text: team.name,
+          className: 'text-sm font-semibold truncate max-w-full text-center',
+        }),
+      ],
+    });
+  }
+
+  // --- Matchup: teamA | VS | teamB ---
+  const matchup = el('div', {
+    className: 'flex items-center gap-3 px-2',
+    children: [
+      teamColumn(current.teamA, 'left'),
+      el('div', {
+        className: 'flex flex-col items-center gap-1 shrink-0',
+        children: [
+          el('span', {
+            text: 'VS',
+            className: 'text-[11px] font-bold text-text-muted tracking-wider',
           }),
         ],
+      }),
+      teamColumn(current.teamB, 'right'),
+    ],
+  });
+
+  // --- Carousel dots ---
+  const dots = hasCarousel ? el('div', {
+    className: 'flex items-center justify-center gap-1.5 mt-4',
+    children: sameTimeMatches.map((_, i) =>
+      el('span', {
+        className: `rounded-full transition-all ${i === carouselIndex
+          ? 'w-4 h-1.5 bg-accent'
+          : 'w-1.5 h-1.5 bg-text-muted/30'}`,
       })
-    );
-    // Dots
-    children.push(
+    ),
+  }) : null;
+
+  // --- Card assembly ---
+  const content = el('div', {
+    children: [
+      // Top: round label
+      roundLabel ? el('div', {
+        className: 'flex justify-center mb-4',
+        children: [
+          el('span', { text: roundLabel, className: 'badge badge-upcoming' }),
+        ],
+      }) : null,
+      // Matchup hero
+      matchup,
+      // Divider
+      el('div', { className: 'divider my-4 mx-10' }),
+      // Countdown
       el('div', {
-        className: 'flex items-center justify-center gap-1.5 mt-3',
-        children: sameTimeMatches.map((_, i) =>
-          el('span', {
-            className: `w-1.5 h-1.5 rounded-full ${i === carouselIndex ? 'bg-accent' : 'bg-bg-surface'}`,
-          })
-        ),
-      })
-    );
-  } else {
-    children.push(
-      el('div', { className: 'flex items-center justify-center gap-4', children: matchupChildren }),
-    );
-    if (roundLabel) {
-      children.push(el('p', { text: roundLabel, className: 'text-xs text-text-muted mt-3' }));
-    }
+        className: 'text-center',
+        children: [
+          el('p', {
+            text: hasCarousel ? 'Comienzan en' : 'Comienza en',
+            className: 'text-[11px] text-text-muted uppercase tracking-wider font-semibold mb-0.5',
+          }),
+          el('div', { className: 'flex justify-center', children: [countdownDisplay(msUntil)] }),
+        ],
+      }),
+      // Carousel dots
+      dots,
+    ].filter(Boolean),
+  });
+
+  // Wrap with carousel arrows if needed
+  if (hasCarousel) {
+    return el('div', {
+      className: 'card p-5 md:p-6 mb-6 relative',
+      children: [
+        el('button', {
+          className: 'absolute left-2 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center rounded-full bg-bg-surface/80 text-text-muted hover:text-text-primary transition-colors z-10',
+          html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><polyline points="15,18 9,12 15,6"/></svg>',
+          events: { click: () => { carouselIndex = (carouselIndex - 1 + sameTimeMatches.length) % sameTimeMatches.length; } },
+        }),
+        content,
+        el('button', {
+          className: 'absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center rounded-full bg-bg-surface/80 text-text-muted hover:text-text-primary transition-colors z-10',
+          html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><polyline points="9,18 15,12 9,6"/></svg>',
+          events: { click: () => { carouselIndex = (carouselIndex + 1) % sameTimeMatches.length; } },
+        }),
+      ],
+    });
   }
 
   return el('div', {
-    className: 'card p-6 md:p-8 text-center mb-6',
-    children,
+    className: 'card p-5 md:p-6 mb-6',
+    children: [content],
   });
 }
 
@@ -540,21 +584,39 @@ function createUpcomingCard(match, state) {
   const minsAway = Math.max(0, Math.floor(msUntil / 60000));
 
   return el('div', {
-    className: 'card p-3 flex flex-col items-center gap-1.5',
+    className: 'card p-3',
     children: [
       el('div', {
         className: 'flex items-center gap-2',
         children: [
-          match.teamA ? flag(match.teamA.code, 20) : null,
-          el('span', { text: match.teamA ? match.teamA.name : 'TBD', className: 'text-xs font-medium' }),
-          el('span', { text: 'vs', className: 'text-[10px] text-text-muted mx-1' }),
-          el('span', { text: match.teamB ? match.teamB.name : 'TBD', className: 'text-xs font-medium' }),
-          match.teamB ? flag(match.teamB.code, 20) : null,
-        ].filter(Boolean),
+          el('div', {
+            className: 'flex items-center gap-1.5 flex-1 min-w-0',
+            children: [
+              match.teamA ? flag(match.teamA.code, 20) : null,
+              el('span', { text: match.teamA ? match.teamA.name : 'TBD', className: 'text-xs font-medium truncate' }),
+            ].filter(Boolean),
+          }),
+          el('span', {
+            text: 'VS',
+            className: 'score-num text-[10px] !min-w-[26px] !h-[26px] shrink-0',
+          }),
+          el('div', {
+            className: 'flex items-center gap-1.5 flex-1 min-w-0 justify-end',
+            children: [
+              el('span', { text: match.teamB ? match.teamB.name : 'TBD', className: 'text-xs font-medium truncate' }),
+              match.teamB ? flag(match.teamB.code, 20) : null,
+            ].filter(Boolean),
+          }),
+        ],
       }),
-      el('span', {
-        text: `en ${formatMinutes(minsAway)}`,
-        className: 'text-[11px] text-text-muted tabular-nums',
+      el('div', {
+        className: 'text-center mt-1.5',
+        children: [
+          el('span', {
+            text: `en ${formatMinutes(minsAway)}`,
+            className: 'text-[11px] text-text-muted tabular-nums',
+          }),
+        ],
       }),
     ],
   });

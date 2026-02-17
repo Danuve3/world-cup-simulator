@@ -31,7 +31,7 @@
 
 /* ---- Glass header ---- */
 .glass-header {
-  background: rgba(12, 12, 14, 0.85);
+  background: rgba(12, 12, 14, 0.95);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
 }
@@ -90,6 +90,11 @@ html.light .card {
   font-size: 0.75rem;
   font-weight: 500;
   color: var(--color-text-secondary);
+}
+.pill-live {
+  background: var(--color-live);
+  color: #fff;
+  font-weight: 600;
 }
 
 /* ---- Section header ---- */
@@ -168,12 +173,12 @@ html.light .card {
   color: var(--color-accent);
 }
 
-/* ---- Table row ---- */
-.table-row {
+/* ---- List row ---- */
+.list-row {
   transition: background-color 0.15s;
 }
 
-.table-row:hover {
+.list-row:hover {
   background-color: var(--color-bg-hover);
 }
 

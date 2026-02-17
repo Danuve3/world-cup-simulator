@@ -174,8 +174,13 @@ export function getStats(timestamp) {
   const titles = {};
   const participations = {};
   let totalGoals = 0;
-  let maxGoalsTournament = { edition: 0, goals: 0 };
+  let maxGoalsTournament = { edition: -1, goals: 0 };
+  let minGoalsTournament = { edition: -1, goals: Infinity };
+  let mostGoalsTeam = { edition: -1, team: null, goals: 0 };
+  let fewestGoalsTeam = { edition: -1, team: null, goals: Infinity };
   const biggestWins = [];
+  const highestScoring = [];
+  const allTimeRanking = {};
 
   for (let i = 0; i < edition; i++) {
     const t = simulateTournament(i);
@@ -189,11 +194,18 @@ export function getStats(timestamp) {
     if (t.totalGoals > maxGoalsTournament.goals) {
       maxGoalsTournament = { edition: i, goals: t.totalGoals, host: t.host };
     }
+    if (t.totalGoals < minGoalsTournament.goals) {
+      minGoalsTournament = { edition: i, goals: t.totalGoals, host: t.host };
+    }
 
     // Participations from draw
     for (const group of t.draw.groups) {
       for (const team of group) {
         participations[team.code] = (participations[team.code] || 0) + 1;
+        if (!allTimeRanking[team.code]) {
+          allTimeRanking[team.code] = { team, editions: 0, played: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0 };
+        }
+        allTimeRanking[team.code].editions++;
       }
     }
 
@@ -206,6 +218,7 @@ export function getStats(timestamp) {
       t.knockout.thirdPlace,
       t.knockout.final,
     ];
+    const teamGoals = {};
     for (const m of allMatches) {
       const diff = Math.abs(m.goalsA - m.goalsB);
       if (diff >= 4) {
@@ -217,6 +230,44 @@ export function getStats(timestamp) {
           goalsB: m.goalsB,
         });
       }
+      const total = m.goalsA + m.goalsB;
+      if (total >= 5) {
+        highestScoring.push({
+          edition: i,
+          teamA: m.teamA,
+          teamB: m.teamB,
+          goalsA: m.goalsA,
+          goalsB: m.goalsB,
+        });
+      }
+      teamGoals[m.teamA.code] = (teamGoals[m.teamA.code] || 0) + m.goalsA;
+      teamGoals[m.teamB.code] = (teamGoals[m.teamB.code] || 0) + m.goalsB;
+
+      // All-time ranking
+      for (const side of ['A', 'B']) {
+        const team = side === 'A' ? m.teamA : m.teamB;
+        const gf = side === 'A' ? m.goalsA : m.goalsB;
+        const ga = side === 'A' ? m.goalsB : m.goalsA;
+        if (!allTimeRanking[team.code]) {
+          allTimeRanking[team.code] = { team, editions: 0, played: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0 };
+        }
+        const r = allTimeRanking[team.code];
+        r.played++;
+        r.gf += gf;
+        r.ga += ga;
+        if (gf > ga) r.won++;
+        else if (gf === ga) r.drawn++;
+        else r.lost++;
+      }
+    }
+    for (const [code, goals] of Object.entries(teamGoals)) {
+      const team = t.draw.groups.flat().find(tm => tm.code === code);
+      if (goals > mostGoalsTeam.goals) {
+        mostGoalsTeam = { edition: i, team, goals };
+      }
+      if (goals < fewestGoalsTeam.goals) {
+        fewestGoalsTeam = { edition: i, team, goals };
+      }
     }
   }
 
@@ -225,11 +276,20 @@ export function getStats(timestamp) {
     participations,
     totalGoals,
     maxGoalsTournament,
+    minGoalsTournament: minGoalsTournament.edition >= 0 ? minGoalsTournament : null,
+    mostGoalsTeam: mostGoalsTeam.team ? mostGoalsTeam : null,
+    fewestGoalsTeam: fewestGoalsTeam.team ? fewestGoalsTeam : null,
+    allTimeRanking: Object.values(allTimeRanking)
+      .map(r => ({ ...r, gd: r.gf - r.ga, points: r.won * 3 + r.drawn }))
+      .sort((a, b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf),
     biggestWins: biggestWins.sort((a, b) => {
       const diffA = Math.abs(a.goalsA - a.goalsB);
       const diffB = Math.abs(b.goalsA - b.goalsB);
       return diffB - diffA;
     }).slice(0, 20),
+    highestScoring: highestScoring.sort((a, b) =>
+      (b.goalsA + b.goalsB) - (a.goalsA + a.goalsB)
+    ).slice(0, 20),
     totalTournaments: edition,
   };
 }
@@ -237,6 +297,7 @@ export function getStats(timestamp) {
 /**
  * Get stats including the current in-progress tournament.
  * Shows partial stats even when no tournament has completed yet.
+ * Includes live match data for real-time ranking updates.
  */
 export function getLiveStats(timestamp) {
   const { edition, cycleMinute } = timestampToEdition(timestamp);
@@ -246,10 +307,43 @@ export function getLiveStats(timestamp) {
   const tournament = simulateTournament(edition);
   const { matches } = tournament.groupStage;
 
-  // Only count completed matches
+  // Live matches for real-time data
+  const liveMatchInfos = getLiveMatches(cycleMinute);
+  const liveTeamCodes = new Set();
+
+  // Build live match data with scores
+  const liveMatchesWithScores = liveMatchInfos.map(info => {
+    if (info.type === 'group') {
+      const groupTeams = tournament.draw.groups[info.group];
+      const fixturePatterns = [
+        [[0, 1], [2, 3]],
+        [[0, 2], [1, 3]],
+        [[0, 3], [1, 2]],
+      ];
+      const [iA, iB] = fixturePatterns[info.matchday][info.matchIndex];
+      const teamA = groupTeams[iA];
+      const teamB = groupTeams[iB];
+      const matchState = getMatchAtMinute(edition, info.matchId, teamA, teamB, info.matchMinute, true);
+      liveTeamCodes.add(teamA.code);
+      liveTeamCodes.add(teamB.code);
+      return { ...info, ...matchState };
+    } else {
+      const matchResult = findKnockoutMatch(tournament, info.round, info.matchIndex);
+      if (matchResult) {
+        const matchState = getMatchAtMinute(edition, info.matchId, matchResult.teamA, matchResult.teamB, info.matchMinute, false);
+        liveTeamCodes.add(matchResult.teamA.code);
+        liveTeamCodes.add(matchResult.teamB.code);
+        return { ...info, ...matchState };
+      }
+      return info;
+    }
+  });
+
+  // Completed + live matches for stats
   let currentGoals = 0;
   let currentMatchCount = 0;
   const currentBiggestWins = [];
+  const completedMatchesForRanking = [];
 
   // Group stage completed matches
   for (const m of matches) {
@@ -257,6 +351,7 @@ export function getLiveStats(timestamp) {
     if (timing.endMin <= cycleMinute) {
       currentGoals += m.goalsA + m.goalsB;
       currentMatchCount++;
+      completedMatchesForRanking.push(m);
       const diff = Math.abs(m.goalsA - m.goalsB);
       if (diff >= 4) {
         currentBiggestWins.push({
@@ -267,6 +362,15 @@ export function getLiveStats(timestamp) {
           goalsB: m.goalsB,
         });
       }
+    }
+  }
+
+  // Collect live matches for ranking separately
+  const liveMatchesForRanking = [];
+  for (const m of liveMatchesWithScores) {
+    if (m.teamA && m.teamB) {
+      currentGoals += m.goalsA + m.goalsB;
+      liveMatchesForRanking.push(m);
     }
   }
 
@@ -284,6 +388,7 @@ export function getLiveStats(timestamp) {
       if (timing.endMin <= cycleMinute) {
         currentGoals += m.goalsA + m.goalsB;
         currentMatchCount++;
+        completedMatchesForRanking.push(m);
         const diff = Math.abs(m.goalsA - m.goalsB);
         if (diff >= 4) {
           currentBiggestWins.push({
@@ -296,6 +401,58 @@ export function getLiveStats(timestamp) {
         }
       }
     });
+  }
+
+  // Helper: build ranking from base + tournament participation + match list
+  function buildRankingFrom(matchList) {
+    const ranking = {};
+    for (const r of baseStats.allTimeRanking) {
+      ranking[r.team.code] = { ...r };
+    }
+    for (const group of tournament.draw.groups) {
+      for (const team of group) {
+        if (!ranking[team.code]) {
+          ranking[team.code] = { team, editions: 0, played: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0, gd: 0, points: 0 };
+        }
+        ranking[team.code].editions++;
+      }
+    }
+    for (const m of matchList) {
+      for (const side of ['A', 'B']) {
+        const team = side === 'A' ? m.teamA : m.teamB;
+        const gf = side === 'A' ? m.goalsA : m.goalsB;
+        const ga = side === 'A' ? m.goalsB : m.goalsA;
+        if (!ranking[team.code]) {
+          ranking[team.code] = { team, editions: 1, played: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0, gd: 0, points: 0 };
+        }
+        const r = ranking[team.code];
+        r.played++;
+        r.gf += gf;
+        r.ga += ga;
+        if (gf > ga) r.won++;
+        else if (gf === ga) r.drawn++;
+        else r.lost++;
+      }
+    }
+    return Object.values(ranking)
+      .map(r => ({ ...r, gd: r.gf - r.ga, points: r.won * 3 + r.drawn }))
+      .sort((a, b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf);
+  }
+
+  // Build both rankings for position delta comparison
+  const completedOnlyRanking = buildRankingFrom(completedMatchesForRanking);
+  const liveAllTimeRanking = buildRankingFrom([...completedMatchesForRanking, ...liveMatchesForRanking]);
+
+  // Compute position deltas for live teams
+  const rankingDeltas = new Map();
+  if (liveTeamCodes.size > 0) {
+    for (const code of liveTeamCodes) {
+      const basePos = completedOnlyRanking.findIndex(r => r.team.code === code);
+      const livePos = liveAllTimeRanking.findIndex(r => r.team.code === code);
+      if (basePos >= 0 && livePos >= 0) {
+        rankingDeltas.set(code, basePos - livePos); // positive = moved up
+      }
+    }
   }
 
   // Current tournament participations
@@ -324,7 +481,10 @@ export function getLiveStats(timestamp) {
     currentTournamentGoals: currentGoals,
     currentTournamentMatches: currentMatchCount,
     biggestWins: allBiggestWins,
-    hasLiveData: currentMatchCount > 0,
+    hasLiveData: currentMatchCount > 0 || liveMatchesWithScores.length > 0,
+    allTimeRanking: liveAllTimeRanking,
+    liveTeamCodes,
+    rankingDeltas,
   };
 }
 

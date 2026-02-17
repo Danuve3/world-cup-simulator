@@ -163,8 +163,9 @@ export function updateHeader(state) {
     info.innerHTML = '';
     if (state.tournament?.host) {
       const hostFlag = flag(state.tournament.host.code, 40);
-      hostFlag.style.height = '28px';
-      hostFlag.style.width = 'auto';
+      hostFlag.style.height = '24px';
+      hostFlag.style.width = '36px';
+      hostFlag.style.objectFit = 'cover';
       info.appendChild(hostFlag);
       info.appendChild(
         el('div', {

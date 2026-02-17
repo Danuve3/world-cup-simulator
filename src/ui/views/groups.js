@@ -4,12 +4,12 @@ import { computeStandings } from '../../engine/group-stage.js';
 import { SCHEDULE } from '../../constants.js';
 
 /**
- * Groups view — 8 group tables with anti-spoiler protection.
+ * Groups view — 8 group tables with anti-spoiler protection and live data.
  */
 export function renderGroups(container, state) {
   container.innerHTML = '';
 
-  const { tournament, cycleMinute } = state;
+  const { tournament, cycleMinute, liveMatches } = state;
 
   // During draw, groups aren't formed yet
   if (cycleMinute < SCHEDULE.DRAW.end) {
@@ -37,10 +37,45 @@ export function renderGroups(container, state) {
     return timing.endMin <= cycleMinute;
   });
 
-  // Recompute standings from completed matches only
-  const standings = computeStandings(tournament.draw.groups, completedMatches);
+  // Live group matches (in progress right now)
+  const liveGroupMatches = (liveMatches || []).filter(m => m.type === 'group' && m.teamA && m.teamB);
 
-  const totalGoals = completedMatches.reduce((s, m) => s + m.goalsA + m.goalsB, 0);
+  // Collect live team codes for highlighting
+  const liveTeamCodes = new Set();
+  for (const m of liveGroupMatches) {
+    liveTeamCodes.add(m.teamA.code);
+    liveTeamCodes.add(m.teamB.code);
+  }
+
+  // Recompute standings from completed + live matches
+  const standings = computeStandings(tournament.draw.groups, [...completedMatches, ...liveGroupMatches]);
+
+  // Compute position deltas: compare live standings vs completed-only standings
+  const positionDeltas = new Map();
+  if (liveGroupMatches.length > 0) {
+    const baseStandings = computeStandings(tournament.draw.groups, completedMatches);
+    for (let g = 0; g < standings.length; g++) {
+      const baseTable = baseStandings[g];
+      const liveTable = standings[g];
+      for (let pos = 0; pos < liveTable.length; pos++) {
+        const code = liveTable[pos].team.code;
+        if (liveTeamCodes.has(code)) {
+          const basePos = baseTable.findIndex(r => r.team.code === code);
+          positionDeltas.set(code, basePos - pos); // positive = moved up
+        }
+      }
+    }
+  }
+
+  const liveCount = liveGroupMatches.length;
+
+  // Determine current matchday (1-indexed) from activity
+  const matchdaysActive = new Set();
+  for (const m of completedMatches) matchdaysActive.add(m.matchday);
+  for (const m of liveGroupMatches) matchdaysActive.add(m.matchday);
+  const currentMatchday = matchdaysActive.size > 0 ? Math.max(...matchdaysActive) + 1 : 0;
+  // Check if all 3 matchdays are fully completed (16 matches each = 48 total)
+  const allGroupsDone = completedMatches.length >= 48;
 
   container.appendChild(
     el('div', {
@@ -50,8 +85,12 @@ export function renderGroups(container, state) {
         el('div', {
           className: 'flex gap-2',
           children: [
-            el('span', { className: 'pill', text: `${completedMatches.length} partidos` }),
-            el('span', { className: 'pill', text: `${totalGoals} goles` }),
+            ...(allGroupsDone
+              ? [el('span', { className: 'pill', text: 'Completada' })]
+              : currentMatchday > 0
+                ? [el('span', { className: 'pill', text: `Jornada ${currentMatchday} de 3` })]
+                : []),
+            ...(liveCount > 0 ? [el('span', { className: 'pill pill-live', text: `${liveCount} en vivo` })] : []),
           ],
         }),
       ],
@@ -61,46 +100,68 @@ export function renderGroups(container, state) {
   container.appendChild(
     el('div', {
       className: 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4',
-      children: standings.map((table, g) => createGroupCardWithMatches(table, g, completedMatches)),
+      children: standings.map((table, g) => createGroupCardWithMatches(table, g, completedMatches, liveGroupMatches, liveTeamCodes, positionDeltas)),
     })
   );
 }
 
-function createGroupCardWithMatches(table, groupIndex, completedMatches) {
+function createGroupCardWithMatches(table, groupIndex, completedMatches, liveGroupMatches, liveTeamCodes, positionDeltas) {
   const letter = String.fromCharCode(65 + groupIndex);
-  const groupMatches = completedMatches.filter(m => m.group === groupIndex);
+  const groupCompleted = completedMatches.filter(m => m.group === groupIndex);
+  const groupLive = liveGroupMatches.filter(m => m.group === groupIndex);
   const allPlayed = table.every(r => r.played === 3);
 
-  // Group matches by matchday
+  // Group completed matches by matchday
   const byMatchday = [[], [], []];
-  for (const m of groupMatches) byMatchday[m.matchday].push(m);
+  for (const m of groupCompleted) byMatchday[m.matchday].push(m);
+
+  // Group live matches by matchday
+  const liveByMatchday = [[], [], []];
+  for (const m of groupLive) liveByMatchday[m.matchday].push(m);
+
+  const allDisplayMatches = [...groupCompleted, ...groupLive];
 
   return el('div', {
     className: 'card p-4',
     children: [
       el('div', {
-        className: 'text-xs font-bold text-text-muted mb-3 uppercase tracking-wider',
-        text: `Grupo ${letter}`,
+        className: 'flex items-center justify-between mb-3',
+        children: [
+          el('span', {
+            className: 'text-xs font-bold text-text-muted uppercase tracking-wider',
+            text: `Grupo ${letter}`,
+          }),
+          ...(groupLive.length > 0 ? [
+            el('span', {
+              className: 'text-[9px] font-bold text-live uppercase tracking-wider animate-pulse',
+              text: 'EN VIVO',
+            }),
+          ] : []),
+        ],
       }),
       // Header row
       createStandingsHeader(),
       // Team rows
-      ...table.map((row, i) => createStandingsRow(row, i, allPlayed)),
+      ...table.map((row, i) => createStandingsRow(row, i, allPlayed, liveTeamCodes, positionDeltas)),
       // Matches by matchday below the standings
-      ...(groupMatches.length > 0 ? [
+      ...(allDisplayMatches.length > 0 ? [
         el('div', {
           className: 'border-t border-border-subtle mt-3 pt-3 space-y-2',
-          children: byMatchday.flatMap((dayMatches, day) =>
-            dayMatches.length > 0
+          children: [0, 1, 2].flatMap(day => {
+            const completed = byMatchday[day];
+            const live = liveByMatchday[day];
+            const hasMatches = completed.length > 0 || live.length > 0;
+            return hasMatches
               ? [
                   el('div', {
                     className: 'text-[9px] text-text-muted uppercase tracking-wider font-semibold mt-1',
                     text: `Jornada ${day + 1}`,
                   }),
-                  ...dayMatches.map(m => createInlineMatchResult(m)),
+                  ...completed.map(m => createInlineMatchResult(m, false)),
+                  ...live.map(m => createInlineMatchResult(m, true)),
                 ]
-              : []
-          ),
+              : [];
+          }),
         }),
       ] : []),
     ],
@@ -126,11 +187,13 @@ function createStandingsHeader() {
   });
 }
 
-function createStandingsRow(row, i, allPlayed) {
+function createStandingsRow(row, i, allPlayed, liveTeamCodes, positionDeltas) {
   const qualified = i < 2 && allPlayed;
+  const isLive = liveTeamCodes && liveTeamCodes.has(row.team.code);
+  const delta = positionDeltas ? positionDeltas.get(row.team.code) : undefined;
   const statClass = 'text-[10px] tabular-nums text-center shrink-0 text-text-secondary';
   return el('div', {
-    className: 'flex items-center gap-1 py-1.5',
+    className: `flex items-center gap-1 py-1.5${isLive ? ' bg-yellow-500/10 -mx-1 px-1 rounded' : ''}`,
     children: [
       qualified
         ? el('span', { className: 'qualified-bar' })
@@ -141,6 +204,7 @@ function createStandingsRow(row, i, allPlayed) {
         text: row.team.name,
         className: `text-xs truncate flex-1 min-w-0 ${qualified ? 'font-medium' : 'text-text-secondary'}`,
       }),
+      ...(isLive && delta !== undefined ? [createDeltaIndicator(delta)] : []),
       el('span', { text: String(row.played), className: `${statClass} w-4` }),
       el('span', { text: String(row.won), className: `${statClass} w-4` }),
       el('span', { text: String(row.drawn), className: `${statClass} w-4` }),
@@ -161,29 +225,61 @@ function createStandingsRow(row, i, allPlayed) {
   });
 }
 
-function createInlineMatchResult(m) {
+function createDeltaIndicator(delta) {
+  if (delta > 0) {
+    return el('span', {
+      html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" class="w-2.5 h-2.5"><polyline points="6,15 12,9 18,15"/></svg>',
+      className: 'text-emerald-500 shrink-0 w-3',
+    });
+  } else if (delta < 0) {
+    return el('span', {
+      html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" class="w-2.5 h-2.5"><polyline points="6,9 12,15 18,9"/></svg>',
+      className: 'text-live shrink-0 w-3',
+    });
+  }
+  return el('span', {
+    text: '–',
+    className: 'text-[9px] text-text-muted shrink-0 w-3 text-center',
+  });
+}
+
+function createInlineMatchResult(m, isLive) {
   const aWon = m.goalsA > m.goalsB;
   const bWon = m.goalsB > m.goalsA;
 
   return el('div', {
-    className: 'flex items-center gap-1.5 text-[11px]',
+    className: `flex items-center gap-1.5 text-[11px]${isLive ? ' bg-yellow-500/10 -mx-1 px-1 rounded py-0.5' : ''}`,
     children: [
       el('div', {
         className: 'flex items-center gap-1 flex-1 min-w-0 justify-end',
         children: [
-          el('span', { text: m.teamA.name, className: `truncate ${aWon ? 'font-semibold' : 'text-text-secondary'}` }),
+          el('span', { text: m.teamA.name, className: `truncate ${isLive ? 'font-semibold' : aWon ? 'font-semibold' : 'text-text-secondary'}` }),
           flag(m.teamA.code, 14),
         ],
       }),
-      el('span', {
-        text: `${m.goalsA} - ${m.goalsB}`,
-        className: 'font-bold tabular-nums shrink-0 text-[10px] bg-bg-surface rounded px-1.5 py-0.5',
-      }),
+      isLive
+        ? el('div', {
+            className: 'flex items-center gap-1 shrink-0',
+            children: [
+              el('span', {
+                text: `${m.goalsA} - ${m.goalsB}`,
+                className: 'font-bold tabular-nums text-[10px] text-live',
+              }),
+              el('span', {
+                text: `${m.matchMinute}'`,
+                className: 'text-[9px] text-live font-semibold tabular-nums animate-pulse',
+              }),
+            ],
+          })
+        : el('span', {
+            text: `${m.goalsA} - ${m.goalsB}`,
+            className: 'font-bold tabular-nums shrink-0 text-[10px] bg-bg-surface rounded px-1.5 py-0.5',
+          }),
       el('div', {
         className: 'flex items-center gap-1 flex-1 min-w-0',
         children: [
           flag(m.teamB.code, 14),
-          el('span', { text: m.teamB.name, className: `truncate ${bWon ? 'font-semibold' : 'text-text-secondary'}` }),
+          el('span', { text: m.teamB.name, className: `truncate ${isLive ? 'font-semibold' : bWon ? 'font-semibold' : 'text-text-secondary'}` }),
         ],
       }),
     ],

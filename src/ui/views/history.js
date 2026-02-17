@@ -194,6 +194,7 @@ function renderHistoryDetail(container, state, edition) {
     { label: 'Octavos de Final', matches: ko.r16 },
     { label: 'Cuartos de Final', matches: ko.qf },
     { label: 'Semifinales', matches: ko.sf },
+    { label: 'Tercer Puesto', matches: [ko.thirdPlace] },
     { label: 'Final', matches: [ko.final] },
   ];
 
@@ -334,16 +335,16 @@ function createHistoryInlineMatch(m) {
 
 function createMiniPodium(emoji, label, team, isChamp = false) {
   return el('div', {
-    className: 'flex flex-col items-center',
+    className: `flex flex-col items-center ${isChamp ? '' : 'mt-4'}`,
     children: [
-      el('span', { text: emoji, className: isChamp ? 'text-3xl' : 'text-xl' }),
+      el('span', { text: emoji, className: isChamp ? 'text-4xl' : 'text-xl' }),
       el('div', {
-        className: `w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center mt-1 ${
-          isChamp ? 'bg-gold-light' : 'bg-bg-surface'
+        className: `rounded-xl flex items-center justify-center mt-1 ${
+          isChamp ? 'w-16 h-16 md:w-20 md:h-20 bg-gold-light' : 'w-10 h-10 md:w-12 md:h-12 bg-bg-surface'
         }`,
-        children: [flag(team.code, isChamp ? 28 : 22)],
+        children: [flag(team.code, isChamp ? 40 : 22)],
       }),
-      el('span', { text: team.name, className: `text-xs mt-1.5 font-medium ${isChamp ? 'text-gold' : ''}` }),
+      el('span', { text: team.name, className: `mt-1.5 font-medium ${isChamp ? 'text-base md:text-lg font-bold text-gold' : 'text-xs'}` }),
       el('span', { text: label, className: 'text-[9px] text-text-muted' }),
     ],
   });

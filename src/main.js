@@ -55,11 +55,20 @@ tickInterval = setInterval(() => {
   const phaseChanged = newState.phase.phase !== lastPhase;
   const minuteChanged = newState.cycleMinute !== lastMinute;
   const editionChanged = newState.edition !== lastEdition;
+  const hasLiveMatches = newState.liveMatches && newState.liveMatches.length > 0;
 
   // Dashboard always refreshes every second (for live countdowns)
   if (currentView === 'dashboard' && mainContainer) {
     currentState = newState;
     renderDashboard(mainContainer, currentState);
+  }
+
+  // Groups and stats refresh every tick when there are live matches
+  const liveRendered = hasLiveMatches && mainContainer && (currentView === 'groups' || currentView === 'stats');
+  if (liveRendered) {
+    currentState = newState;
+    if (currentView === 'groups') renderGroups(mainContainer, currentState);
+    else renderStats(mainContainer, currentState);
   }
 
   if (!minuteChanged && !phaseChanged && !editionChanged) return;
@@ -72,7 +81,7 @@ tickInterval = setInterval(() => {
   updateHeader(currentState);
   updateNav();
 
-  if ((phaseChanged || minuteChanged) && currentView !== 'dashboard') {
+  if ((phaseChanged || minuteChanged) && currentView !== 'dashboard' && !liveRendered) {
     switch (currentView) {
       case 'groups':
         renderGroups(mainContainer, currentState);
@@ -80,7 +89,12 @@ tickInterval = setInterval(() => {
       case 'bracket':
         renderBracket(mainContainer, currentState);
         break;
+      case 'stats':
+        renderStats(mainContainer, currentState);
+        break;
     }
+  } else if ((phaseChanged || minuteChanged) && currentView === 'bracket') {
+    renderBracket(mainContainer, currentState);
   }
 }, 1000);
 

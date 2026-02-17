@@ -4,6 +4,10 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
   base: './',
+  define: {
+    // In dev, default EPOCH so that the 3rd World Cup (edition 2) is starting now
+    ...(!process.env.VITE_EPOCH && { 'import.meta.env.VITE_EPOCH': JSON.stringify(String(Date.now() - 2 * 10080 * 60 * 1000)) }),
+  },
   plugins: [
     tailwindcss(),
     VitePWA({
