@@ -1,9 +1,9 @@
 import { el, flag } from '../components.js';
-import { getStats } from '../../engine/simulation.js';
+import { getLiveStats } from '../../engine/simulation.js';
 import { getTeamByCode, TEAMS } from '../../engine/teams.js';
 
 /**
- * Stats view — Rankings and records.
+ * Stats view — Rankings and records (with live data from current tournament).
  */
 export function renderStats(container, state) {
   container.innerHTML = '';
@@ -12,9 +12,9 @@ export function renderStats(container, state) {
     el('h2', { text: 'Estad\u00edsticas', className: 'text-lg md:text-xl font-bold mb-5' })
   );
 
-  const stats = getStats(state.timestamp);
+  const stats = getLiveStats(state.timestamp);
 
-  if (stats.totalTournaments === 0) {
+  if (stats.totalTournaments === 0 && !stats.hasLiveData) {
     container.appendChild(
       el('div', {
         className: 'card p-12 text-center',
@@ -28,15 +28,31 @@ export function renderStats(container, state) {
   }
 
   // Overview
+  const overviewCards = [
+    createStatCard('Mundiales', stats.totalTournaments + (stats.hasLiveData ? 1 : 0), 'text-accent'),
+    createStatCard('Goles Totales', stats.totalGoals, 'text-accent'),
+  ];
+
+  if (stats.totalTournaments > 0) {
+    overviewCards.push(
+      createStatCard('Prom/Mundial', Math.round(stats.totalGoals / (stats.totalTournaments + (stats.hasLiveData ? 1 : 0))), 'text-text-primary'),
+    );
+  }
+
+  if (stats.hasLiveData) {
+    overviewCards.push(
+      createStatCard('Torneo Actual', `${stats.currentTournamentGoals} goles`, 'text-gold'),
+    );
+  } else if (stats.totalTournaments > 0) {
+    overviewCards.push(
+      createStatCard('Max Goles/Cup', stats.maxGoalsTournament.goals, 'text-gold'),
+    );
+  }
+
   container.appendChild(
     el('div', {
-      className: 'grid grid-cols-2 md:grid-cols-4 gap-3 mb-6',
-      children: [
-        createStatCard('Mundiales', stats.totalTournaments, 'text-accent'),
-        createStatCard('Goles Totales', stats.totalGoals, 'text-accent'),
-        createStatCard('Prom/Mundial', Math.round(stats.totalGoals / stats.totalTournaments), 'text-text-primary'),
-        createStatCard('Max Goles/Cup', stats.maxGoalsTournament.goals, 'text-gold'),
-      ],
+      className: `grid grid-cols-2 ${overviewCards.length > 2 ? 'md:grid-cols-4' : 'md:grid-cols-2'} gap-3 mb-6`,
+      children: overviewCards,
     })
   );
 
@@ -44,15 +60,19 @@ export function renderStats(container, state) {
   const titleEntries = toEntries(stats.titles).slice(0, 15);
   const partEntries = toEntries(stats.participations).slice(0, 15);
 
-  container.appendChild(
-    el('div', {
-      className: 'grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6',
-      children: [
-        titleEntries.length > 0 ? createRankingCard('T\u00edtulos Mundiales', titleEntries, true) : null,
-        partEntries.length > 0 ? createRankingCard('M\u00e1s Participaciones', partEntries, false) : null,
-      ].filter(Boolean),
-    })
-  );
+  const rankingCards = [
+    titleEntries.length > 0 ? createRankingCard('T\u00edtulos Mundiales', titleEntries, true) : null,
+    partEntries.length > 0 ? createRankingCard('M\u00e1s Participaciones', partEntries, false) : null,
+  ].filter(Boolean);
+
+  if (rankingCards.length > 0) {
+    container.appendChild(
+      el('div', {
+        className: 'grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6',
+        children: rankingCards,
+      })
+    );
+  }
 
   if (stats.biggestWins.length > 0) {
     container.appendChild(createBiggestWins(stats.biggestWins.slice(0, 10)));
@@ -80,7 +100,7 @@ function createRankingCard(title, entries, isGold) {
   const topCount = entries[0]?.count || 1;
 
   return el('div', {
-    className: 'card overflow-hidden',
+    className: 'card overflow-hidden w-full',
     children: [
       el('div', {
         className: 'px-5 py-3 border-b border-border-default',

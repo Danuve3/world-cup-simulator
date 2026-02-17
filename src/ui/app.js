@@ -1,6 +1,32 @@
 import { el, flag, getEditionYear } from './components.js';
 import { navigate, getCurrentRoute } from './router.js';
 
+const SUN_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+const MOON_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+
+function initTheme() {
+  const saved = localStorage.getItem('theme');
+  if (saved === 'light') {
+    document.documentElement.classList.add('light');
+  }
+}
+
+function toggleTheme() {
+  const html = document.documentElement;
+  html.classList.toggle('light');
+  localStorage.setItem('theme', html.classList.contains('light') ? 'light' : 'dark');
+  updateThemeIcons();
+}
+
+function updateThemeIcons() {
+  const isLight = document.documentElement.classList.contains('light');
+  document.querySelectorAll('.theme-toggle-icon').forEach(el => {
+    el.innerHTML = isLight ? MOON_ICON : SUN_ICON;
+  });
+}
+
+initTheme();
+
 const NAV_ITEMS = [
   { path: '/', label: 'En Vivo', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10,8 16,12 10,16"/></svg>' },
   { path: '/groups', label: 'Grupos', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>' },
@@ -55,7 +81,7 @@ function createSidebar() {
           el('div', {
             children: [
               el('span', { text: 'World Cup', className: 'text-base font-bold block leading-tight' }),
-              el('span', { text: 'Simulator', className: 'text-xs text-text-muted block' }),
+              el('span', { text: 'Simulator', className: 'text-[11px] text-text-muted block' }),
             ],
           }),
         ],
@@ -78,6 +104,17 @@ function createSidebar() {
         id: 'sidebar-footer',
         className: 'px-3 py-3 text-xs text-text-muted border-t border-border-default mt-2',
       }),
+      el('button', {
+        className: 'nav-item w-full text-left mt-1',
+        events: { click: toggleTheme },
+        children: [
+          el('span', {
+            html: document.documentElement.classList.contains('light') ? MOON_ICON : SUN_ICON,
+            className: 'w-5 h-5 shrink-0 theme-toggle-icon',
+          }),
+          el('span', { text: 'Cambiar tema', className: 'text-sm' }),
+        ],
+      }),
     ],
   });
 }
@@ -95,10 +132,25 @@ function createHeader() {
             events: { click: () => navigate('/') },
             children: [
               el('span', { text: '\u26bd', className: 'text-lg' }),
-              el('span', { text: 'World Cup Sim', className: 'text-sm font-bold' }),
+              el('span', { text: 'World Cup Simulator', className: 'text-sm font-bold' }),
             ],
           }),
-          el('div', { id: 'header-info', className: 'flex items-center gap-2' }),
+          el('div', {
+            className: 'flex items-center gap-2.5',
+            children: [
+              el('div', { id: 'header-info', className: 'flex items-center gap-2.5' }),
+              el('button', {
+                className: 'w-8 h-8 flex items-center justify-center rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors',
+                events: { click: toggleTheme },
+                children: [
+                  el('span', {
+                    html: document.documentElement.classList.contains('light') ? MOON_ICON : SUN_ICON,
+                    className: 'w-4 h-4 theme-toggle-icon',
+                  }),
+                ],
+              }),
+            ],
+          }),
         ],
       }),
     ],
@@ -110,13 +162,23 @@ export function updateHeader(state) {
   if (info) {
     info.innerHTML = '';
     if (state.tournament?.host) {
-      info.appendChild(flag(state.tournament.host.code, 20));
-    }
-    if (state.phase) {
+      const hostFlag = flag(state.tournament.host.code, 40);
+      hostFlag.style.height = '28px';
+      hostFlag.style.width = 'auto';
+      info.appendChild(hostFlag);
       info.appendChild(
-        el('span', {
-          text: state.phase.label,
-          className: 'text-xs font-medium text-text-secondary',
+        el('div', {
+          className: 'flex flex-col items-end',
+          children: [
+            el('span', {
+              text: `Mundial ${getEditionYear(state.edition)}`,
+              className: 'text-xs font-semibold leading-tight',
+            }),
+            el('span', {
+              text: state.tournament.host.name,
+              className: 'text-[10px] text-text-muted leading-tight',
+            }),
+          ],
         })
       );
     }

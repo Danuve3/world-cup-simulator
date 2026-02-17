@@ -40,19 +40,21 @@ function createHero(state) {
     className: 'card p-5 md:p-6 mb-6',
     children: [
       el('div', {
-        className: 'flex items-center justify-between mb-4',
+        className: 'flex items-start justify-between mb-4',
         children: [
           el('div', {
             className: 'flex items-center gap-3',
             children: [
-              el('div', {
-                className: 'w-11 h-11 rounded-xl bg-bg-surface flex items-center justify-center',
-                children: [flag(tournament.host.code, 28)],
-              }),
+              (() => {
+                const f = flag(tournament.host.code, 80);
+                f.style.height = '34px';
+                f.style.width = 'auto';
+                return f;
+              })(),
               el('div', {
                 children: [
-                  el('h2', { text: `Mundial ${getEditionYear(edition)}`, className: 'text-base font-bold' }),
-                  el('span', { text: tournament.host.name, className: 'text-sm text-text-secondary' }),
+                  el('h2', { text: `Mundial ${getEditionYear(edition)}`, className: 'text-base font-bold leading-tight' }),
+                  el('span', { text: tournament.host.name, className: 'text-sm text-text-secondary leading-tight' }),
                 ],
               }),
             ],
@@ -94,6 +96,10 @@ function getPhaseStyle(phase) {
 
 /* ── Draw phase ── */
 
+let lastDrawRevealed = -1;
+let showingBall = false;
+let ballTeam = null;
+
 function renderDrawPhase(state) {
   const { tournament, phase, cycleStart, timestamp } = state;
   const drawSequence = tournament.draw.drawSequence;
@@ -105,6 +111,17 @@ function renderDrawPhase(state) {
   const phaseElapsedMs = (timestamp - cycleStart) - (SCHEDULE.DRAW.start * 60 * 1000);
   const nextRevealMs = (revealedCount + 1) * revealIntervalMs - phaseElapsedMs;
 
+  // Detect newly revealed team for ball animation
+  if (revealedCount > lastDrawRevealed && lastDrawRevealed >= 0 && revealedCount <= totalTeams) {
+    const newlyRevealed = drawSequence[revealedCount - 1];
+    if (newlyRevealed) {
+      ballTeam = newlyRevealed.team;
+      showingBall = true;
+      setTimeout(() => { showingBall = false; }, 1800);
+    }
+  }
+  lastDrawRevealed = revealedCount;
+
   const children = [
     el('div', {
       className: 'flex items-center justify-between mb-4',
@@ -115,7 +132,25 @@ function renderDrawPhase(state) {
     }),
   ];
 
-  if (revealedCount < totalTeams) {
+  // Ball reveal animation
+  if (showingBall && ballTeam) {
+    children.push(
+      el('div', {
+        className: 'flex justify-center mb-4',
+        children: [
+          el('div', {
+            className: 'draw-ball',
+            children: [
+              flag(ballTeam.code, 32),
+              el('span', { text: ballTeam.name, className: 'text-sm font-bold mt-1' }),
+            ],
+          }),
+        ],
+      })
+    );
+  }
+
+  if (revealedCount < totalTeams && !showingBall) {
     const msLeft = Math.max(0, nextRevealMs);
     children.push(
       el('div', {
@@ -128,6 +163,38 @@ function renderDrawPhase(state) {
     );
   }
 
+  // Team list panel — show all 32 teams
+  const revealedCodes = new Set(
+    drawSequence.slice(0, revealedCount).map(d => d.team.code)
+  );
+  children.push(
+    el('div', {
+      className: 'card p-4 mb-4',
+      children: [
+        el('div', {
+          className: 'text-xs font-bold text-text-muted mb-3 uppercase tracking-wider',
+          text: 'Selecciones',
+        }),
+        el('div', {
+          className: 'flex flex-wrap gap-2',
+          children: drawSequence.map(d => {
+            const revealed = revealedCodes.has(d.team.code);
+            return el('div', {
+              className: `flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all ${
+                revealed ? 'bg-accent-light text-accent font-medium' : 'bg-bg-surface text-text-muted'
+              }`,
+              children: [
+                flag(d.team.code, 16),
+                el('span', { text: d.team.name }),
+              ],
+            });
+          }),
+        }),
+      ],
+    })
+  );
+
+  // Groups grid
   children.push(
     el('div', {
       className: 'grid grid-cols-2 md:grid-cols-4 gap-3',
@@ -146,9 +213,10 @@ function renderDrawPhase(state) {
               children: groupTeams.map(d => {
                 const idx = drawSequence.indexOf(d);
                 const show = idx < revealedCount;
+                const isNew = idx === revealedCount - 1;
                 return show
                   ? el('div', {
-                      className: 'flex items-center gap-2 py-1 animate-slide-up',
+                      className: `flex items-center gap-2 py-1 ${isNew ? 'animate-slide-up' : ''}`,
                       children: [
                         flag(d.team.code, 20),
                         el('span', { text: d.team.name, className: 'text-sm' }),
@@ -213,8 +281,14 @@ function renderLivePhase(state) {
     );
   }
 
+  if (state.recentMatches && state.recentMatches.length > 0) {
+    children.push(createRecentMatchesSection(state.recentMatches));
+  }
+
   return el('div', { children });
 }
+
+let carouselIndex = 0;
 
 function createNextMatchCountdown(state) {
   const { upcoming } = state;
@@ -230,34 +304,83 @@ function createNextMatchCountdown(state) {
   }
 
   const next = upcoming[0];
-  const nextMatchStartMs = state.cycleStart + next.startMin * 60 * 1000;
+  const sameTimeMatches = upcoming.filter(m => m.startMin === next.startMin);
+  const hasCarousel = sameTimeMatches.length > 1;
+  if (carouselIndex >= sameTimeMatches.length) carouselIndex = 0;
+
+  const current = sameTimeMatches[carouselIndex];
+  const nextMatchStartMs = state.cycleStart + current.startMin * 60 * 1000;
   const msUntil = nextMatchStartMs - state.timestamp;
+
+  const matchupChildren = [
+    current.teamA ? el('div', {
+      className: 'flex items-center gap-2',
+      children: [flag(current.teamA.code, 24), el('span', { text: current.teamA.name, className: 'text-sm font-medium' })],
+    }) : el('span', { text: 'TBD', className: 'text-sm text-text-muted' }),
+    el('span', { text: 'vs', className: 'text-xs text-text-muted font-medium' }),
+    current.teamB ? el('div', {
+      className: 'flex items-center gap-2',
+      children: [el('span', { text: current.teamB.name, className: 'text-sm font-medium' }), flag(current.teamB.code, 24)],
+    }) : el('span', { text: 'TBD', className: 'text-sm text-text-muted' }),
+  ].filter(Boolean);
+
+  const roundLabel = current.type === 'group'
+    ? `Grupo ${String.fromCharCode(65 + current.group)}`
+    : current.round ? getRoundLabel(current.round) : null;
+
+  const children = [
+    el('p', { text: `Pr\u00f3ximo partido${hasCarousel ? 's' : ''} en`, className: 'text-sm text-text-muted mb-4' }),
+    el('div', { className: 'mb-5', children: [countdownDisplay(msUntil)] }),
+  ];
+
+  if (hasCarousel) {
+    children.push(
+      el('div', {
+        className: 'flex items-center justify-center gap-3',
+        children: [
+          el('button', {
+            className: 'w-7 h-7 flex items-center justify-center rounded-full bg-bg-surface text-text-muted hover:text-text-primary transition-colors',
+            html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><polyline points="15,18 9,12 15,6"/></svg>',
+            events: { click: () => { carouselIndex = (carouselIndex - 1 + sameTimeMatches.length) % sameTimeMatches.length; } },
+          }),
+          el('div', {
+            className: 'flex flex-col items-center',
+            children: [
+              el('div', { className: 'flex items-center justify-center gap-4', children: matchupChildren }),
+              roundLabel ? el('p', { text: roundLabel, className: 'text-xs text-text-muted mt-2' }) : null,
+            ].filter(Boolean),
+          }),
+          el('button', {
+            className: 'w-7 h-7 flex items-center justify-center rounded-full bg-bg-surface text-text-muted hover:text-text-primary transition-colors',
+            html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><polyline points="9,18 15,12 9,6"/></svg>',
+            events: { click: () => { carouselIndex = (carouselIndex + 1) % sameTimeMatches.length; } },
+          }),
+        ],
+      })
+    );
+    // Dots
+    children.push(
+      el('div', {
+        className: 'flex items-center justify-center gap-1.5 mt-3',
+        children: sameTimeMatches.map((_, i) =>
+          el('span', {
+            className: `w-1.5 h-1.5 rounded-full ${i === carouselIndex ? 'bg-accent' : 'bg-bg-surface'}`,
+          })
+        ),
+      })
+    );
+  } else {
+    children.push(
+      el('div', { className: 'flex items-center justify-center gap-4', children: matchupChildren }),
+    );
+    if (roundLabel) {
+      children.push(el('p', { text: roundLabel, className: 'text-xs text-text-muted mt-3' }));
+    }
+  }
 
   return el('div', {
     className: 'card p-6 md:p-8 text-center mb-6',
-    children: [
-      el('p', { text: 'Pr\u00f3ximo partido en', className: 'text-sm text-text-muted mb-4' }),
-      el('div', { className: 'mb-5', children: [countdownDisplay(msUntil)] }),
-      el('div', {
-        className: 'flex items-center justify-center gap-4',
-        children: [
-          next.teamA ? el('div', {
-            className: 'flex items-center gap-2',
-            children: [flag(next.teamA.code, 24), el('span', { text: next.teamA.name, className: 'text-sm font-medium' })],
-          }) : el('span', { text: 'TBD', className: 'text-sm text-text-muted' }),
-          el('span', { text: 'vs', className: 'text-xs text-text-muted font-medium' }),
-          next.teamB ? el('div', {
-            className: 'flex items-center gap-2',
-            children: [el('span', { text: next.teamB.name, className: 'text-sm font-medium' }), flag(next.teamB.code, 24)],
-          }) : el('span', { text: 'TBD', className: 'text-sm text-text-muted' }),
-        ].filter(Boolean),
-      }),
-      next.type === 'group'
-        ? el('p', { text: `Grupo ${String.fromCharCode(65 + next.group)}`, className: 'text-xs text-text-muted mt-3' })
-        : next.round
-          ? el('p', { text: getRoundLabel(next.round), className: 'text-xs text-text-muted mt-3' })
-          : null,
-    ].filter(Boolean),
+    children,
   });
 }
 
@@ -344,21 +467,80 @@ function createUpcomingCard(match, state) {
   const minsAway = Math.max(0, Math.floor(msUntil / 60000));
 
   return el('div', {
-    className: 'card p-3 flex items-center justify-between',
+    className: 'card p-3 flex flex-col items-center gap-1.5',
     children: [
       el('div', {
-        className: 'flex items-center gap-2 min-w-0 flex-1',
+        className: 'flex items-center gap-2',
         children: [
           match.teamA ? flag(match.teamA.code, 20) : null,
-          el('span', { text: match.teamA ? match.teamA.name : 'TBD', className: 'text-xs truncate' }),
+          el('span', { text: match.teamA ? match.teamA.name : 'TBD', className: 'text-xs font-medium' }),
           el('span', { text: 'vs', className: 'text-[10px] text-text-muted mx-1' }),
-          el('span', { text: match.teamB ? match.teamB.name : 'TBD', className: 'text-xs truncate' }),
+          el('span', { text: match.teamB ? match.teamB.name : 'TBD', className: 'text-xs font-medium' }),
           match.teamB ? flag(match.teamB.code, 20) : null,
         ].filter(Boolean),
       }),
       el('span', {
-        text: formatMinutes(minsAway),
-        className: 'text-xs text-text-muted tabular-nums shrink-0 ml-2',
+        text: `en ${formatMinutes(minsAway)}`,
+        className: 'text-[11px] text-text-muted tabular-nums',
+      }),
+    ],
+  });
+}
+
+/* ── Recent matches ── */
+
+function createRecentMatchesSection(recentMatches) {
+  return el('div', {
+    className: 'mt-6',
+    children: [
+      el('p', { text: '\u00daltimos partidos', className: 'section-title' }),
+      el('div', {
+        className: 'grid grid-cols-1 md:grid-cols-2 gap-2',
+        children: recentMatches.map(m => createRecentMatchCard(m)),
+      }),
+    ],
+  });
+}
+
+function createRecentMatchCard(m) {
+  const aWon = m.goalsA > m.goalsB;
+  const bWon = m.goalsB > m.goalsA;
+
+  return el('div', {
+    className: 'card p-3',
+    children: [
+      el('div', {
+        className: 'flex items-center gap-2',
+        children: [
+          el('div', {
+            className: 'flex items-center gap-1.5 flex-1 min-w-0',
+            children: [
+              flag(m.teamA.code, 20),
+              el('span', { text: m.teamA.name, className: `text-xs truncate ${aWon ? 'font-bold' : ''}` }),
+            ],
+          }),
+          el('div', {
+            className: 'flex items-center gap-1 shrink-0',
+            children: [
+              el('span', {
+                text: String(m.goalsA),
+                className: `score-num text-xs !min-w-[26px] !h-[26px] ${aWon ? 'score-num-winner' : ''}`,
+              }),
+              el('span', { text: '-', className: 'text-text-muted text-[10px]' }),
+              el('span', {
+                text: String(m.goalsB),
+                className: `score-num text-xs !min-w-[26px] !h-[26px] ${bWon ? 'score-num-winner' : ''}`,
+              }),
+            ],
+          }),
+          el('div', {
+            className: 'flex items-center gap-1.5 flex-1 min-w-0 justify-end',
+            children: [
+              el('span', { text: m.teamB.name, className: `text-xs truncate ${bWon ? 'font-bold' : ''}` }),
+              flag(m.teamB.code, 20),
+            ],
+          }),
+        ],
       }),
     ],
   });
@@ -511,6 +693,10 @@ function renderRestPhase(state) {
         ],
       })
     );
+  }
+
+  if (state.recentMatches && state.recentMatches.length > 0) {
+    children.push(createRecentMatchesSection(state.recentMatches));
   }
 
   return el('div', { children });

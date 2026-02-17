@@ -49,7 +49,7 @@ export function flag(code, width = 40) {
   const fetchWidth = validWidths.find(w => w >= width) || 40;
   img.src = `https://flagcdn.com/w${fetchWidth}/${code}.png`;
   img.alt = code;
-  img.className = 'inline-block rounded-sm shrink-0';
+  img.className = 'inline-block rounded-[2px] shrink-0';
   img.style.width = `${width}px`;
   img.style.height = 'auto';
   img.loading = 'lazy';
@@ -123,34 +123,34 @@ export function countdownDisplay(ms, opts = {}) {
   const { size = 'md' } = opts;
   const { d, h, m, s } = formatCountdown(ms);
   const numClass = size === 'sm' ? 'text-lg min-w-[36px] h-[40px]' : 'countdown-num';
-  const labelClass = size === 'sm' ? 'text-[9px]' : 'countdown-label';
+  const labelClass = size === 'sm' ? 'text-[9px]' : 'text-[10px]';
   const sepClass = size === 'sm' ? 'text-text-muted text-sm font-semibold' : 'text-text-muted text-lg font-bold';
 
   const units = [];
-  if (d > 0) units.push({ value: d, label: 'DÍAS' });
-  units.push({ value: h, label: 'HRS' }, { value: m, label: 'MIN' }, { value: s, label: 'SEG' });
+  if (d > 0) units.push({ value: d, label: 'D' });
+  units.push({ value: h, label: 'H' }, { value: m, label: 'M' }, { value: s, label: 'S' });
 
   const children = [];
   units.forEach((u, i) => {
     if (i > 0) {
-      children.push(el('span', { text: ':', className: `${sepClass} self-start mt-2` }));
+      children.push(el('span', { text: ':', className: `${sepClass} self-center` }));
     }
     children.push(
       el('div', {
-        className: 'countdown-unit',
+        className: 'flex items-center gap-1',
         children: [
           el('div', {
             text: String(u.value).padStart(2, '0'),
             className: `${numClass} flex items-center justify-center bg-bg-card rounded-xl font-extrabold tabular-nums shadow-sm`,
           }),
-          el('span', { text: u.label, className: `${labelClass} text-text-muted font-semibold tracking-wider` }),
+          el('span', { text: u.label, className: `${labelClass} text-text-muted font-semibold` }),
         ],
       })
     );
   });
 
   return el('div', {
-    className: 'flex items-start justify-center gap-2',
+    className: 'flex items-center justify-center gap-2',
     children,
   });
 }

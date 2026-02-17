@@ -1,6 +1,6 @@
 import './styles/main.css';
 import { createAppShell, updateHeader, updateNav } from './ui/app.js';
-import { route, initRouter } from './ui/router.js';
+import { route, initRouter, setOnRouteChange } from './ui/router.js';
 import { getCurrentState } from './engine/simulation.js';
 import { renderDashboard } from './ui/views/dashboard.js';
 import { renderGroups } from './ui/views/groups.js';
@@ -42,6 +42,7 @@ route('/stats', (container) => {
 
 currentState = getCurrentState();
 updateHeader(currentState);
+setOnRouteChange(() => updateNav());
 initRouter(mainContainer);
 
 let lastEdition = currentState.edition;
@@ -71,7 +72,7 @@ tickInterval = setInterval(() => {
   updateHeader(currentState);
   updateNav();
 
-  if (phaseChanged && currentView !== 'dashboard') {
+  if ((phaseChanged || minuteChanged) && currentView !== 'dashboard') {
     switch (currentView) {
       case 'groups':
         renderGroups(mainContainer, currentState);

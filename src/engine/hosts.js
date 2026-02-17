@@ -23,6 +23,11 @@ const MIN_HOST_RATING = 50;
  * @returns {{ team: object, edition: number }}
  */
 export function getHost(edition, previousHosts = new Map()) {
+  // First edition: USA 2026
+  if (edition === 0) {
+    return TEAMS.find(t => t.code === 'us');
+  }
+
   const rng = createPRNG(combineSeed('host', edition));
 
   // Determine confederation for this edition

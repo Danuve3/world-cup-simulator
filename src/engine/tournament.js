@@ -39,7 +39,9 @@ export function simulateTournament(edition) {
 
   // Get defending champion (from previous edition)
   let defendingChampionCode = null;
-  if (edition > 0) {
+  if (edition === 0) {
+    defendingChampionCode = 'ar'; // Argentina — 2022 FIFA World Cup champions
+  } else {
     const prev = simulateTournament(edition - 1);
     defendingChampionCode = prev.champion.code;
   }

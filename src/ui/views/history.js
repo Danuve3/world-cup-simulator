@@ -147,39 +147,41 @@ function renderHistoryDetail(container, state, edition) {
     })
   );
 
-  // Groups
+  // Groups — full standings with matches
   container.appendChild(el('p', { text: 'Grupos', className: 'section-title' }));
   container.appendChild(
     el('div', {
       className: 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-6',
       children: tournament.groupStage.standings.map((table, g) => {
         const letter = String.fromCharCode(65 + g);
+        const groupMatches = tournament.groupStage.matches.filter(m => m.group === g);
+        const byMatchday = [[], [], []];
+        for (const m of groupMatches) byMatchday[m.matchday].push(m);
+
         return el('div', {
-          className: 'card p-3',
+          className: 'card p-4',
           children: [
             el('div', {
-              className: 'text-xs font-bold text-text-muted mb-2 uppercase tracking-wider',
+              className: 'text-xs font-bold text-text-muted mb-3 uppercase tracking-wider',
               text: `Grupo ${letter}`,
             }),
-            ...table.map((row, i) =>
-              el('div', {
-                className: `flex items-center justify-between py-1 text-xs ${i < 2 ? '' : 'opacity-50'}`,
-                children: [
-                  el('div', {
-                    className: 'flex items-center gap-1.5',
-                    children: [
-                      el('span', { text: `${i + 1}`, className: 'text-[9px] text-text-muted w-3' }),
-                      flag(row.team.code, 14),
-                      el('span', { text: row.team.name, className: 'truncate' }),
-                    ],
-                  }),
-                  el('span', {
-                    text: `${row.points}`,
-                    className: `tabular-nums font-bold ${i < 2 ? 'text-accent' : 'text-text-muted'}`,
-                  }),
-                ],
-              })
-            ),
+            createHistoryStandingsHeader(),
+            ...table.map((row, i) => createHistoryStandingsRow(row, i)),
+            // Matches by matchday
+            el('div', {
+              className: 'border-t border-border-subtle mt-3 pt-3 space-y-2',
+              children: byMatchday.flatMap((dayMatches, day) =>
+                dayMatches.length > 0
+                  ? [
+                      el('div', {
+                        className: 'text-[9px] text-text-muted uppercase tracking-wider font-semibold mt-1',
+                        text: `Jornada ${day + 1}`,
+                      }),
+                      ...dayMatches.map(m => createHistoryInlineMatch(m)),
+                    ]
+                  : []
+              ),
+            }),
           ],
         });
       }),
@@ -245,6 +247,88 @@ function createDetailMatch(m) {
         className: 'text-[9px] text-text-muted text-center mt-1',
       }) : null,
     ].filter(Boolean),
+  });
+}
+
+function createHistoryStandingsHeader() {
+  const cols = ['PJ', 'PG', 'PE', 'PP', 'GF', 'GC', 'DG', 'Pts'];
+  return el('div', {
+    className: 'flex items-center gap-1 pb-1.5 mb-1 border-b border-border-subtle',
+    children: [
+      el('div', { className: 'w-[3px]' }),
+      el('span', { className: 'w-4 shrink-0' }),
+      el('span', { className: 'w-5 shrink-0' }),
+      el('div', { className: 'flex-1 min-w-0' }),
+      ...cols.map(c =>
+        el('span', {
+          text: c,
+          className: `text-[8px] text-text-muted font-semibold tabular-nums text-center ${c === 'Pts' ? 'w-6' : 'w-4'} shrink-0`,
+        })
+      ),
+    ],
+  });
+}
+
+function createHistoryStandingsRow(row, i) {
+  const qualified = i < 2;
+  const statClass = 'text-[10px] tabular-nums text-center shrink-0 text-text-secondary';
+  return el('div', {
+    className: 'flex items-center gap-1 py-1.5',
+    children: [
+      qualified
+        ? el('span', { className: 'qualified-bar' })
+        : el('span', { className: 'w-[3px]' }),
+      el('span', { text: `${i + 1}`, className: 'text-[10px] text-text-muted w-4 shrink-0 tabular-nums' }),
+      flag(row.team.code, 18),
+      el('span', {
+        text: row.team.name,
+        className: `text-xs truncate flex-1 min-w-0 ${qualified ? 'font-medium' : 'text-text-secondary'}`,
+      }),
+      el('span', { text: String(row.played), className: `${statClass} w-4` }),
+      el('span', { text: String(row.won), className: `${statClass} w-4` }),
+      el('span', { text: String(row.drawn), className: `${statClass} w-4` }),
+      el('span', { text: String(row.lost), className: `${statClass} w-4` }),
+      el('span', { text: String(row.goalsFor), className: `${statClass} w-4` }),
+      el('span', { text: String(row.goalsAgainst), className: `${statClass} w-4` }),
+      el('span', {
+        text: row.goalDifference > 0 ? `+${row.goalDifference}` : String(row.goalDifference),
+        className: `text-[10px] tabular-nums text-center w-4 shrink-0 ${
+          row.goalDifference > 0 ? 'text-accent font-semibold' : row.goalDifference < 0 ? 'text-live' : 'text-text-muted'
+        }`,
+      }),
+      el('span', {
+        text: String(row.points),
+        className: `text-xs font-bold tabular-nums text-center w-6 shrink-0 ${qualified ? 'text-accent' : 'text-text-secondary'}`,
+      }),
+    ],
+  });
+}
+
+function createHistoryInlineMatch(m) {
+  const aWon = m.goalsA > m.goalsB;
+  const bWon = m.goalsB > m.goalsA;
+  return el('div', {
+    className: 'flex items-center gap-1.5 text-[11px]',
+    children: [
+      el('div', {
+        className: 'flex items-center gap-1 flex-1 min-w-0 justify-end',
+        children: [
+          el('span', { text: m.teamA.name, className: `truncate ${aWon ? 'font-semibold' : 'text-text-secondary'}` }),
+          flag(m.teamA.code, 14),
+        ],
+      }),
+      el('span', {
+        text: `${m.goalsA} - ${m.goalsB}`,
+        className: 'font-bold tabular-nums shrink-0 text-[10px] bg-bg-surface rounded px-1.5 py-0.5',
+      }),
+      el('div', {
+        className: 'flex items-center gap-1 flex-1 min-w-0',
+        children: [
+          flag(m.teamB.code, 14),
+          el('span', { text: m.teamB.name, className: `truncate ${bWon ? 'font-semibold' : 'text-text-secondary'}` }),
+        ],
+      }),
+    ],
   });
 }
 

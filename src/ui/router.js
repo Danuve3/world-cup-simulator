@@ -6,6 +6,7 @@
 const routes = new Map();
 let currentRoute = null;
 let currentCleanup = null;
+let onRouteChange = null;
 
 /**
  * Register a route handler.
@@ -52,24 +53,39 @@ export function initRouter(container) {
       currentCleanup = null;
     }
 
-    // Clear container with transition
-    container.classList.add('view-exit');
+    // Simple transition: fade content out quickly, swap, fade in
+    const hasContent = container.children.length > 0;
+    if (hasContent) {
+      container.style.opacity = '0';
+      container.style.transition = 'opacity 0.12s ease-out';
+    }
+
     setTimeout(() => {
       container.innerHTML = '';
-      container.classList.remove('view-exit');
-      container.classList.add('view-enter');
-
       currentCleanup = handler(container, params) || null;
       currentRoute = basePath;
+      if (onRouteChange) onRouteChange();
 
-      setTimeout(() => container.classList.remove('view-enter'), 300);
-    }, container.children.length ? 200 : 0);
+      // Fade in
+      container.style.opacity = '0';
+      container.style.transition = 'opacity 0.18s ease-in';
+      requestAnimationFrame(() => {
+        container.style.opacity = '1';
+      });
+    }, hasContent ? 120 : 0);
   }
 
   window.addEventListener('hashchange', handleRoute);
   handleRoute();
 
   return () => window.removeEventListener('hashchange', handleRoute);
+}
+
+/**
+ * Set a callback for route changes (e.g., to update nav highlighting).
+ */
+export function setOnRouteChange(fn) {
+  onRouteChange = fn;
 }
 
 /**

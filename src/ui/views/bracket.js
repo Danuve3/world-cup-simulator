@@ -1,64 +1,65 @@
 import { el, flag } from '../components.js';
+import { getKnockoutMatchTiming } from '../../engine/timeline.js';
 
 /**
- * Bracket view — Knockout stage.
+ * Bracket view — Knockout stage with anti-spoiler protection.
  */
 export function renderBracket(container, state) {
   container.innerHTML = '';
 
-  const { tournament } = state;
+  const { tournament, cycleMinute } = state;
   const ko = tournament.knockout;
+
+  // Determine which matches are completed
+  const isComplete = (round, idx) => {
+    const timing = getKnockoutMatchTiming(round, idx);
+    return timing.endMin <= cycleMinute;
+  };
+
+  // Check if final is done to show champion
+  const finalDone = isComplete('FINAL', 0);
 
   container.appendChild(
     el('div', {
       className: 'flex items-center justify-between mb-5',
       children: [
         el('h2', { text: 'Eliminatorias', className: 'text-lg md:text-xl font-bold' }),
-        el('div', {
-          className: 'flex items-center gap-2',
-          children: [
-            el('span', { text: '\ud83c\udfc6' }),
-            flag(ko.champion.code, 20),
-            el('span', { text: ko.champion.name, className: 'text-sm font-bold text-gold' }),
-          ],
-        }),
+        finalDone
+          ? el('div', {
+              className: 'flex items-center gap-2',
+              children: [
+                el('span', { text: '\ud83c\udfc6' }),
+                flag(ko.champion.code, 20),
+                el('span', { text: ko.champion.name, className: 'text-sm font-bold text-gold' }),
+              ],
+            })
+          : el('span', { text: 'En curso', className: 'pill' }),
       ],
     })
   );
 
   // Desktop: visual bracket
-  container.appendChild(createDesktopBracket(ko));
+  container.appendChild(createDesktopBracket(ko, isComplete));
   // Mobile: stacked rounds
-  container.appendChild(createMobileBracket(ko));
-
-  // Third place
-  container.appendChild(
-    el('div', {
-      className: 'mt-6',
-      children: [
-        el('p', { text: 'Tercer Puesto', className: 'section-title' }),
-        createBracketMatch(ko.thirdPlace),
-      ],
-    })
-  );
+  container.appendChild(createMobileBracket(ko, isComplete));
 }
 
-function createDesktopBracket(ko) {
+function createDesktopBracket(ko, isComplete) {
   return el('div', {
     className: 'hidden md:grid grid-cols-7 gap-x-2 items-center mb-4',
     children: [
-      createBracketColumn(ko.r16.slice(0, 4), 'Octavos'),
-      createBracketColumn(ko.qf.slice(0, 2), 'Cuartos'),
-      createBracketColumn(ko.sf.slice(0, 1), 'Semis'),
-      createFinalColumn(ko.final),
-      createBracketColumn(ko.sf.slice(1, 2), ''),
-      createBracketColumn(ko.qf.slice(2, 4), ''),
-      createBracketColumn(ko.r16.slice(4, 8), ''),
+      createBracketColumn(ko.r16.slice(0, 4), 'Octavos', 'R16', 0, isComplete),
+      createBracketColumn(ko.qf.slice(0, 2), 'Cuartos', 'QF', 0, isComplete),
+      createBracketColumn(ko.sf.slice(0, 1), 'Semis', 'SF', 0, isComplete),
+      createFinalColumn(ko, isComplete),
+      createBracketColumn(ko.sf.slice(1, 2), '', 'SF', 1, isComplete),
+      createBracketColumn(ko.qf.slice(2, 4), '', 'QF', 2, isComplete),
+      createBracketColumn(ko.r16.slice(4, 8), '', 'R16', 4, isComplete),
     ],
   });
 }
 
-function createBracketColumn(matches, label) {
+function createBracketColumn(matches, label, round, startIndex, isComplete) {
   return el('div', {
     className: 'flex flex-col justify-around gap-3 py-2',
     children: [
@@ -66,23 +67,43 @@ function createBracketColumn(matches, label) {
         text: label,
         className: 'text-[10px] text-text-muted text-center uppercase tracking-widest font-semibold mb-1',
       }) : el('div'),
-      ...matches.map(m => createCompactMatch(m)),
+      ...matches.map((m, i) => createCompactMatch(m, isComplete(round, startIndex + i))),
     ],
   });
 }
 
-function createFinalColumn(final) {
+function createFinalColumn(ko, isComplete) {
+  const finalDone = isComplete('FINAL', 0);
+  const thirdDone = isComplete('THIRD', 0);
+
   return el('div', {
     className: 'flex flex-col items-center justify-center py-4',
     children: [
-      el('div', { text: 'FINAL', className: 'text-[10px] text-gold tracking-widest font-bold mb-2' }),
-      el('div', { text: '\ud83c\udfc6', className: 'text-3xl mb-2 animate-float' }),
-      createBracketMatch(final, true),
+      el('div', { text: 'FINAL', className: 'text-xs text-gold tracking-widest font-extrabold mb-2' }),
+      el('div', { text: '\ud83c\udfc6', className: 'text-4xl mb-3 animate-float' }),
+      createFinalMatch(ko.final, finalDone),
+      el('div', {
+        className: 'mt-4 pt-3 border-t border-border-subtle w-full',
+        children: [
+          el('div', { text: '3ER PUESTO', className: 'text-[9px] text-text-muted text-center uppercase tracking-widest font-semibold mb-2' }),
+          createBracketMatch(ko.thirdPlace, false, thirdDone),
+        ],
+      }),
     ],
   });
 }
 
-function createCompactMatch(match) {
+function createCompactMatch(match, completed) {
+  if (!completed) {
+    return el('div', {
+      className: 'card p-2 text-xs opacity-50',
+      children: [
+        createTeamRow(match.teamA, '?', false),
+        el('div', { className: 'divider my-0.5' }),
+        createTeamRow(match.teamB, '?', false),
+      ],
+    });
+  }
   const winner = match.winner;
   return el('div', {
     className: 'card p-2 text-xs',
@@ -120,31 +141,69 @@ function createTeamRow(team, goals, isWinner) {
   });
 }
 
-function createMobileBracket(ko) {
+function createMobileBracket(ko, isComplete) {
   const rounds = [
-    { label: 'Final', matches: [ko.final] },
-    { label: 'Semifinales', matches: ko.sf },
-    { label: 'Cuartos de Final', matches: ko.qf },
-    { label: 'Octavos de Final', matches: ko.r16 },
+    { label: 'Final', matches: [ko.final], round: 'FINAL', isFinal: true },
+    { label: 'Tercer Puesto', matches: [ko.thirdPlace], round: 'THIRD' },
+    { label: 'Semifinales', matches: ko.sf, round: 'SF' },
+    { label: 'Cuartos de Final', matches: ko.qf, round: 'QF' },
+    { label: 'Octavos de Final', matches: ko.r16, round: 'R16' },
   ];
 
   return el('div', {
     className: 'md:hidden space-y-5',
-    children: rounds.map(round =>
+    children: rounds.map(r =>
       el('div', {
         children: [
-          el('p', { text: round.label, className: 'section-title' }),
-          el('div', {
-            className: `grid grid-cols-1 ${round.matches.length > 2 ? 'sm:grid-cols-2' : ''} gap-2`,
-            children: round.matches.map(m => createBracketMatch(m)),
-          }),
+          el('p', { text: r.label, className: 'section-title' }),
+          r.isFinal
+            ? createFinalMatch(ko.final, isComplete('FINAL', 0))
+            : el('div', {
+                className: `grid grid-cols-1 ${r.matches.length > 2 ? 'sm:grid-cols-2' : ''} gap-2`,
+                children: r.matches.map((m, i) => createBracketMatch(m, false, isComplete(r.round, i))),
+              }),
         ],
       })
     ),
   });
 }
 
-function createBracketMatch(match, isFinal = false) {
+function createBracketMatch(match, isFinal = false, completed = true) {
+  if (!completed) {
+    return el('div', {
+      className: 'card p-3 max-w-sm opacity-50',
+      children: [
+        el('div', {
+          className: 'flex items-center justify-between py-1.5 px-2',
+          children: [
+            el('div', {
+              className: 'flex items-center gap-2 min-w-0',
+              children: [
+                flag(match.teamA.code, 20),
+                el('span', { text: match.teamA.name, className: 'text-sm' }),
+              ],
+            }),
+            el('span', { text: '?', className: 'text-sm font-bold tabular-nums text-text-muted' }),
+          ],
+        }),
+        el('div', { className: 'divider my-1' }),
+        el('div', {
+          className: 'flex items-center justify-between py-1.5 px-2',
+          children: [
+            el('div', {
+              className: 'flex items-center gap-2 min-w-0',
+              children: [
+                flag(match.teamB.code, 20),
+                el('span', { text: match.teamB.name, className: 'text-sm' }),
+              ],
+            }),
+            el('span', { text: '?', className: 'text-sm font-bold tabular-nums text-text-muted' }),
+          ],
+        }),
+      ],
+    });
+  }
+
   const winner = match.winner;
   const cls = isFinal ? 'card p-3 w-full max-w-[220px] border border-gold/20' : 'card p-3 max-w-sm';
 
@@ -187,6 +246,88 @@ function createBracketMatch(match, isFinal = false) {
       (match.penalties || match.extraTime) ? el('div', {
         text: match.penalties ? `Penales: ${match.penalties.scoreA}-${match.penalties.scoreB}` : 'Pr\u00f3rroga',
         className: 'text-[10px] text-text-muted text-center mt-1.5',
+      }) : null,
+    ].filter(Boolean),
+  });
+}
+
+function createFinalMatch(match, completed) {
+  if (!completed) {
+    return el('div', {
+      className: 'card p-5 w-full max-w-xs mx-auto border-2 border-gold/20 bg-gold-light/30 opacity-60',
+      children: [
+        el('div', {
+          className: 'flex items-center justify-between py-2 px-3',
+          children: [
+            el('div', {
+              className: 'flex items-center gap-3 min-w-0',
+              children: [
+                flag(match.teamA.code, 40),
+                el('span', { text: match.teamA.name, className: 'text-base font-semibold' }),
+              ],
+            }),
+            el('span', { text: '?', className: 'text-xl font-bold text-text-muted' }),
+          ],
+        }),
+        el('div', { className: 'divider my-1.5' }),
+        el('div', {
+          className: 'flex items-center justify-between py-2 px-3',
+          children: [
+            el('div', {
+              className: 'flex items-center gap-3 min-w-0',
+              children: [
+                flag(match.teamB.code, 40),
+                el('span', { text: match.teamB.name, className: 'text-base font-semibold' }),
+              ],
+            }),
+            el('span', { text: '?', className: 'text-xl font-bold text-text-muted' }),
+          ],
+        }),
+      ],
+    });
+  }
+
+  const winner = match.winner;
+  return el('div', {
+    className: 'card p-5 w-full max-w-xs mx-auto border-2 border-gold/30',
+    style: { background: 'linear-gradient(135deg, var(--color-bg-card), rgba(251,191,36,0.06))' },
+    children: [
+      el('div', {
+        className: `flex items-center justify-between py-2 px-3 rounded-lg ${winner === 'A' ? 'bg-accent-light' : ''}`,
+        children: [
+          el('div', {
+            className: 'flex items-center gap-3 min-w-0',
+            children: [
+              flag(match.teamA.code, 40),
+              el('span', { text: match.teamA.name, className: `text-base ${winner === 'A' ? 'font-bold text-accent' : 'font-semibold'}` }),
+            ],
+          }),
+          el('span', {
+            text: String(match.goalsA),
+            className: `score-num score-num-lg ${winner === 'A' ? 'score-num-winner' : ''}`,
+          }),
+        ],
+      }),
+      el('div', { className: 'divider my-1.5' }),
+      el('div', {
+        className: `flex items-center justify-between py-2 px-3 rounded-lg ${winner === 'B' ? 'bg-accent-light' : ''}`,
+        children: [
+          el('div', {
+            className: 'flex items-center gap-3 min-w-0',
+            children: [
+              flag(match.teamB.code, 40),
+              el('span', { text: match.teamB.name, className: `text-base ${winner === 'B' ? 'font-bold text-accent' : 'font-semibold'}` }),
+            ],
+          }),
+          el('span', {
+            text: String(match.goalsB),
+            className: `score-num score-num-lg ${winner === 'B' ? 'score-num-winner' : ''}`,
+          }),
+        ],
+      }),
+      (match.penalties || match.extraTime) ? el('div', {
+        text: match.penalties ? `Penales: ${match.penalties.scoreA}-${match.penalties.scoreB}` : 'Pr\u00f3rroga',
+        className: 'text-xs text-text-muted text-center mt-2',
       }) : null,
     ].filter(Boolean),
   });

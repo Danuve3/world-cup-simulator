@@ -119,6 +119,9 @@ export function getCurrentState(timestamp) {
     }
   }
 
+  // Recent matches
+  const recentMatches = getRecentMatches(edition, tournament, cycleMinute, 4);
+
   return {
     edition,
     cycleMinute,
@@ -127,6 +130,7 @@ export function getCurrentState(timestamp) {
     tournament,
     liveMatches,
     upcoming,
+    recentMatches,
     nextCycleStart,
     minutesToNext,
     nextHost,
@@ -228,6 +232,154 @@ export function getStats(timestamp) {
     }).slice(0, 20),
     totalTournaments: edition,
   };
+}
+
+/**
+ * Get stats including the current in-progress tournament.
+ * Shows partial stats even when no tournament has completed yet.
+ */
+export function getLiveStats(timestamp) {
+  const { edition, cycleMinute } = timestampToEdition(timestamp);
+  const baseStats = getStats(timestamp);
+
+  // Add current tournament partial stats
+  const tournament = simulateTournament(edition);
+  const { matches } = tournament.groupStage;
+
+  // Only count completed matches
+  let currentGoals = 0;
+  let currentMatchCount = 0;
+  const currentBiggestWins = [];
+
+  // Group stage completed matches
+  for (const m of matches) {
+    const timing = getGroupMatchTiming(m.matchday, m.group, m.matchIndex);
+    if (timing.endMin <= cycleMinute) {
+      currentGoals += m.goalsA + m.goalsB;
+      currentMatchCount++;
+      const diff = Math.abs(m.goalsA - m.goalsB);
+      if (diff >= 4) {
+        currentBiggestWins.push({
+          edition,
+          teamA: m.teamA,
+          teamB: m.teamB,
+          goalsA: m.goalsA,
+          goalsB: m.goalsB,
+        });
+      }
+    }
+  }
+
+  // Knockout completed matches
+  const koRounds = [
+    { round: 'R16', matches: tournament.knockout.r16 },
+    { round: 'QF', matches: tournament.knockout.qf },
+    { round: 'SF', matches: tournament.knockout.sf },
+    { round: 'THIRD', matches: [tournament.knockout.thirdPlace] },
+    { round: 'FINAL', matches: [tournament.knockout.final] },
+  ];
+  for (const { round, matches: roundMatches } of koRounds) {
+    roundMatches.forEach((m, i) => {
+      const timing = getKnockoutMatchTiming(round, i);
+      if (timing.endMin <= cycleMinute) {
+        currentGoals += m.goalsA + m.goalsB;
+        currentMatchCount++;
+        const diff = Math.abs(m.goalsA - m.goalsB);
+        if (diff >= 4) {
+          currentBiggestWins.push({
+            edition,
+            teamA: m.teamA,
+            teamB: m.teamB,
+            goalsA: m.goalsA,
+            goalsB: m.goalsB,
+          });
+        }
+      }
+    });
+  }
+
+  // Current tournament participations
+  const currentParticipations = {};
+  for (const group of tournament.draw.groups) {
+    for (const team of group) {
+      currentParticipations[team.code] = (baseStats.participations[team.code] || 0) + 1;
+    }
+  }
+
+  // Merge participations
+  const mergedParticipations = { ...baseStats.participations };
+  for (const [code, count] of Object.entries(currentParticipations)) {
+    mergedParticipations[code] = count;
+  }
+
+  // Merge biggest wins
+  const allBiggestWins = [...baseStats.biggestWins, ...currentBiggestWins]
+    .sort((a, b) => Math.abs(b.goalsA - b.goalsB) - Math.abs(a.goalsA - a.goalsB))
+    .slice(0, 20);
+
+  return {
+    ...baseStats,
+    participations: mergedParticipations,
+    totalGoals: baseStats.totalGoals + currentGoals,
+    currentTournamentGoals: currentGoals,
+    currentTournamentMatches: currentMatchCount,
+    biggestWins: allBiggestWins,
+    hasLiveData: currentMatchCount > 0,
+  };
+}
+
+/**
+ * Get recently completed matches (for dashboard display).
+ * Returns matches with their full results, ordered by most recent first.
+ */
+export function getRecentMatches(edition, tournament, cycleMinute, limit = 4) {
+  const recent = [];
+  const fixturePatterns = [
+    [[0, 1], [2, 3]],
+    [[0, 2], [1, 3]],
+    [[0, 3], [1, 2]],
+  ];
+
+  // Group stage matches
+  for (let day = 0; day < 3; day++) {
+    for (let g = 0; g < 8; g++) {
+      for (let mi = 0; mi < 2; mi++) {
+        const timing = getGroupMatchTiming(day, g, mi);
+        if (timing.endMin <= cycleMinute) {
+          const groupTeams = tournament.draw.groups[g];
+          const [iA, iB] = fixturePatterns[day][mi];
+          const match = tournament.groupStage.matches.find(
+            m => m.group === g && m.matchday === day && m.matchIndex === mi
+          );
+          if (match) {
+            recent.push({ ...match, endMin: timing.endMin, type: 'group' });
+          }
+        }
+      }
+    }
+  }
+
+  // Knockout matches
+  const koRounds = [
+    { round: 'R16', matches: tournament.knockout.r16, label: 'Octavos' },
+    { round: 'QF', matches: tournament.knockout.qf, label: 'Cuartos' },
+    { round: 'SF', matches: tournament.knockout.sf, label: 'Semifinal' },
+    { round: 'THIRD', matches: [tournament.knockout.thirdPlace], label: '3er Puesto' },
+    { round: 'FINAL', matches: [tournament.knockout.final], label: 'Final' },
+  ];
+
+  for (const { round, matches, label } of koRounds) {
+    matches.forEach((match, i) => {
+      const timing = getKnockoutMatchTiming(round, i);
+      if (timing.endMin <= cycleMinute) {
+        recent.push({ ...match, endMin: timing.endMin, type: 'knockout', roundLabel: label });
+      }
+    });
+  }
+
+  return recent
+    .sort((a, b) => b.endMin - a.endMin)
+    .slice(0, limit);
 }
 
 // Expose setTimeOffset globally for debug

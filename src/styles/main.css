@@ -49,6 +49,27 @@ html {
   -moz-osx-font-smoothing: grayscale;
 }
 
+html.light {
+  --color-bg-primary: #F5F5F7;
+  --color-bg-secondary: #EBEBEF;
+  --color-bg-card: #FFFFFF;
+  --color-bg-elevated: #FFFFFF;
+  --color-bg-hover: #E8E8EC;
+  --color-bg-surface: #F0F0F4;
+  --color-bg-sidebar: #EBEBEF;
+
+  --color-text-primary: #1A1A1F;
+  --color-text-secondary: #6B6B78;
+  --color-text-muted: #9E9EAB;
+
+  --color-border-default: #E5E5EA;
+  --color-border-subtle: #D1D1D8;
+
+  --color-accent-light: rgba(52, 211, 153, 0.12);
+  --color-live-light: rgba(248, 113, 113, 0.1);
+  --color-gold-light: rgba(251, 191, 36, 0.12);
+}
+
 body {
   margin: 0;
   min-height: 100dvh;
