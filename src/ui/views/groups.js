@@ -100,26 +100,23 @@ export function renderGroups(container, state) {
   container.appendChild(
     el('div', {
       className: 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4',
-      children: standings.map((table, g) => createGroupCardWithMatches(table, g, completedMatches, liveGroupMatches, liveTeamCodes, positionDeltas)),
+      children: standings.map((table, g) => createGroupCardWithMatches(table, g, matches, completedMatches, liveGroupMatches, liveTeamCodes, positionDeltas, state.cycleStart)),
     })
   );
 }
 
-function createGroupCardWithMatches(table, groupIndex, completedMatches, liveGroupMatches, liveTeamCodes, positionDeltas) {
+function createGroupCardWithMatches(table, groupIndex, allMatches, completedMatches, liveGroupMatches, liveTeamCodes, positionDeltas, cycleStart) {
   const letter = String.fromCharCode(65 + groupIndex);
   const groupCompleted = completedMatches.filter(m => m.group === groupIndex);
   const groupLive = liveGroupMatches.filter(m => m.group === groupIndex);
   const allPlayed = table.every(r => r.played === 3);
 
-  // Group completed matches by matchday
-  const byMatchday = [[], [], []];
-  for (const m of groupCompleted) byMatchday[m.matchday].push(m);
+  const completedIds = new Set(groupCompleted.map(m => m.matchId));
+  const liveMap = new Map(groupLive.map(m => [m.matchId, m]));
 
-  // Group live matches by matchday
-  const liveByMatchday = [[], [], []];
-  for (const m of groupLive) liveByMatchday[m.matchday].push(m);
-
-  const allDisplayMatches = [...groupCompleted, ...groupLive];
+  const groupMatches = allMatches
+    .filter(m => m.group === groupIndex)
+    .sort((a, b) => a.matchday - b.matchday || a.matchIndex - b.matchIndex);
 
   return el('div', {
     className: 'card p-4',
@@ -143,27 +140,23 @@ function createGroupCardWithMatches(table, groupIndex, completedMatches, liveGro
       createStandingsHeader(),
       // Team rows
       ...table.map((row, i) => createStandingsRow(row, i, allPlayed, liveTeamCodes, positionDeltas)),
-      // Matches by matchday below the standings
-      ...(allDisplayMatches.length > 0 ? [
-        el('div', {
-          className: 'border-t border-border-subtle mt-3 pt-3 space-y-2',
-          children: [0, 1, 2].flatMap(day => {
-            const completed = byMatchday[day];
-            const live = liveByMatchday[day];
-            const hasMatches = completed.length > 0 || live.length > 0;
-            return hasMatches
-              ? [
-                  el('div', {
-                    className: 'text-[9px] text-text-muted uppercase tracking-wider font-semibold mt-1',
-                    text: `Jornada ${day + 1}`,
-                  }),
-                  ...completed.map(m => createInlineMatchResult(m, false)),
-                  ...live.map(m => createInlineMatchResult(m, true)),
-                ]
-              : [];
+      // All 6 matches grouped by matchday
+      el('div', {
+        className: 'border-t border-border-subtle mt-3 pt-3 space-y-2',
+        children: [0, 1, 2].flatMap(day => [
+          el('div', {
+            className: 'text-[9px] text-text-muted uppercase tracking-wider font-semibold mt-1',
+            text: `Jornada ${day + 1}`,
           }),
-        }),
-      ] : []),
+          ...groupMatches
+            .filter(m => m.matchday === day)
+            .map(m => {
+              if (liveMap.has(m.matchId)) return createInlineMatchResult(liveMap.get(m.matchId), true);
+              if (completedIds.has(m.matchId)) return createInlineMatchResult(m, false);
+              return createInlineMatchUpcoming(m, cycleStart);
+            }),
+        ]),
+      }),
     ],
   });
 }
@@ -240,6 +233,37 @@ function createDeltaIndicator(delta) {
   return el('span', {
     text: '–',
     className: 'text-[9px] text-text-muted shrink-0 w-3 text-center',
+  });
+}
+
+function createInlineMatchUpcoming(m, cycleStart) {
+  const timing = getGroupMatchTiming(m.matchday, m.group, m.matchIndex);
+  const startMs = cycleStart + timing.startMin * 60 * 1000;
+  const d = new Date(startMs);
+  const dateStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
+  return el('div', {
+    className: 'flex items-center gap-1.5 text-[11px]',
+    children: [
+      el('div', {
+        className: 'flex items-center gap-1 flex-1 min-w-0 justify-end',
+        children: [
+          el('span', { text: m.teamA.name, className: 'truncate text-text-secondary' }),
+          flag(m.teamA.code, 14),
+        ],
+      }),
+      el('span', {
+        text: dateStr,
+        className: 'text-[9px] tabular-nums shrink-0 text-text-muted bg-bg-surface rounded px-1.5 py-0.5 whitespace-nowrap',
+      }),
+      el('div', {
+        className: 'flex items-center gap-1 flex-1 min-w-0',
+        children: [
+          flag(m.teamB.code, 14),
+          el('span', { text: m.teamB.name, className: 'truncate text-text-secondary' }),
+        ],
+      }),
+    ],
   });
 }
 
