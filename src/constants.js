@@ -4,27 +4,27 @@
 /** PRNG epoch: injected at build time via VITE_EPOCH env var */
 export const EPOCH = import.meta.env.VITE_EPOCH
   ? Number(import.meta.env.VITE_EPOCH)
-  : Date.UTC(2025, 0, 1, 0, 0, 0);
+  : 1771358400000; // 2026-02-17 20:00:00 UTC
 
 /** Total duration of one World Cup cycle in minutes */
 export const CYCLE_DURATION = 10080; // 7 days
 
-/** Schedule phases (start minute, end minute) */
+/** Schedule phases (start minute, end minute) — all times are multiples of 60 so matches start at :00 */
 export const SCHEDULE = {
-  DRAW:        { start: 0,    end: 30,   label: 'Sorteo' },
-  GROUP_STAGE: { start: 30,   end: 5790, label: 'Fase de Grupos' },
-  REST_1:      { start: 5790, end: 5910, label: 'Descanso' },
-  ROUND_16:    { start: 5910, end: 6630, label: 'Octavos de Final' },
-  REST_2:      { start: 6630, end: 6780, label: 'Descanso' },
+  DRAW:        { start: 0,    end: 60,   label: 'Sorteo' },
+  GROUP_STAGE: { start: 60,   end: 5820, label: 'Fase de Grupos' },
+  REST_1:      { start: 5820, end: 5940, label: 'Descanso' },
+  ROUND_16:    { start: 5940, end: 6660, label: 'Octavos de Final' },
+  REST_2:      { start: 6660, end: 6780, label: 'Descanso' },
   QUARTER:     { start: 6780, end: 7380, label: 'Cuartos de Final' },
-  REST_3:      { start: 7380, end: 7530, label: 'Descanso' },
-  SEMI:        { start: 7530, end: 8130, label: 'Semifinales' },
-  REST_4:      { start: 8130, end: 8280, label: 'Descanso' },
-  THIRD_PLACE: { start: 8280, end: 8580, label: 'Tercer Puesto' },
-  REST_5:      { start: 8580, end: 8730, label: 'Descanso' },
-  FINAL:       { start: 8730, end: 9030, label: 'Final' },
-  CELEBRATION: { start: 9030, end: 9075, label: 'Celebraci\u00f3n' },
-  COUNTDOWN:   { start: 9075, end: 10080, label: 'Pr\u00f3ximo Mundial' },
+  REST_3:      { start: 7380, end: 7500, label: 'Descanso' },
+  SEMI:        { start: 7500, end: 8100, label: 'Semifinales' },
+  REST_4:      { start: 8100, end: 8220, label: 'Descanso' },
+  THIRD_PLACE: { start: 8220, end: 8520, label: 'Tercer Puesto' },
+  REST_5:      { start: 8520, end: 8640, label: 'Descanso' },
+  FINAL:       { start: 8640, end: 8940, label: 'Final' },
+  CELEBRATION: { start: 8940, end: 9000, label: 'Celebraci\u00f3n' },
+  COUNTDOWN:   { start: 9000, end: 10080, label: 'Pr\u00f3ximo Mundial' },
 };
 
 /** Match simulation constants */

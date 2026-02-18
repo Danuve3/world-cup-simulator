@@ -7,23 +7,23 @@ describe('Timeline', () => {
     expect(phase.phase).toBe('DRAW');
   });
 
-  it('minute 30 is in GROUP_STAGE', () => {
-    const phase = getPhaseAtMinute(30);
+  it('minute 60 is in GROUP_STAGE', () => {
+    const phase = getPhaseAtMinute(60);
     expect(phase.phase).toBe('GROUP_STAGE');
   });
 
-  it('minute 5910 is in ROUND_16', () => {
-    const phase = getPhaseAtMinute(5910);
+  it('minute 5940 is in ROUND_16', () => {
+    const phase = getPhaseAtMinute(5940);
     expect(phase.phase).toBe('ROUND_16');
   });
 
-  it('minute 8730 is FINAL', () => {
-    const phase = getPhaseAtMinute(8730);
+  it('minute 8640 is FINAL', () => {
+    const phase = getPhaseAtMinute(8640);
     expect(phase.phase).toBe('FINAL');
   });
 
-  it('minute 9060 is CELEBRATION', () => {
-    const phase = getPhaseAtMinute(9060);
+  it('minute 8960 is CELEBRATION', () => {
+    const phase = getPhaseAtMinute(8960);
     expect(phase.phase).toBe('CELEBRATION');
   });
 
@@ -44,8 +44,8 @@ describe('Timeline', () => {
     for (let day = 0; day < 3; day++) {
       for (let g = 0; g < 8; g++) {
         const timing = getGroupMatchTiming(day, g, 0);
-        expect(timing.startMin).toBeGreaterThanOrEqual(30);
-        expect(timing.endMin).toBeLessThanOrEqual(5790);
+        expect(timing.startMin).toBeGreaterThanOrEqual(60);
+        expect(timing.endMin).toBeLessThanOrEqual(5820);
         expect(timing.endMin).toBeGreaterThan(timing.startMin);
       }
     }
@@ -54,12 +54,12 @@ describe('Timeline', () => {
   it('knockout match timings are within their phase bounds', () => {
     for (let i = 0; i < 8; i++) {
       const timing = getKnockoutMatchTiming('R16', i);
-      expect(timing.startMin).toBeGreaterThanOrEqual(5910);
-      expect(timing.endMin).toBeLessThanOrEqual(6630);
+      expect(timing.startMin).toBeGreaterThanOrEqual(5940);
+      expect(timing.endMin).toBeLessThanOrEqual(6660);
     }
     const finalTiming = getKnockoutMatchTiming('FINAL', 0);
-    expect(finalTiming.startMin).toBeGreaterThanOrEqual(8730);
-    expect(finalTiming.endMin).toBeLessThanOrEqual(9030);
+    expect(finalTiming.startMin).toBeGreaterThanOrEqual(8640);
+    expect(finalTiming.endMin).toBeLessThanOrEqual(8940);
   });
 });
 

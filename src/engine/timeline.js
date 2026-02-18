@@ -5,9 +5,9 @@ import { SCHEDULE, CYCLE_DURATION, KNOCKOUT_SLOT } from '../constants.js';
  * 48 matches spread across ~5760 minutes (30 to 5790).
  * 3 matchdays × 8 groups × 2 matches per group = 48 matches.
  *
- * Matchday 1: min 30-1950 (1920 min)
- * Matchday 2: min 1950-3870 (1920 min)
- * Matchday 3: min 3870-5790 (1920 min)
+ * Matchday 1: min 60-1980 (1920 min)
+ * Matchday 2: min 1980-3900 (1920 min)
+ * Matchday 3: min 3900-5820 (1920 min)
  *
  * Each matchday: 16 matches in 8 time slots of 2 simultaneous matches.
  * Each slot: ~23 min match duration + 1 min gap = ~24 min per slot cycle.
@@ -24,11 +24,11 @@ const MATCH_DURATION = 23; // minutes for a full 90-min match (compressed)
  * Each knockout round has matches spread evenly within its time window.
  */
 const KNOCKOUT_ROUNDS = {
-  R16: { start: 5910, end: 6630, matches: 8, perSlot: 2 },
-  QF:  { start: 6780, end: 7380, matches: 4, perSlot: 2 },
-  SF:  { start: 7530, end: 8130, matches: 2, perSlot: 1 },
-  THIRD: { start: 8280, end: 8580, matches: 1, perSlot: 1 },
-  FINAL: { start: 8730, end: 9030, matches: 1, perSlot: 1 },
+  R16:   { start: 5940, end: 6660, matches: 8, perSlot: 2 },
+  QF:    { start: 6780, end: 7380, matches: 4, perSlot: 2 },
+  SF:    { start: 7500, end: 8100, matches: 2, perSlot: 1 },
+  THIRD: { start: 8220, end: 8520, matches: 1, perSlot: 1 },
+  FINAL: { start: 8640, end: 8940, matches: 1, perSlot: 1 },
 };
 
 /**

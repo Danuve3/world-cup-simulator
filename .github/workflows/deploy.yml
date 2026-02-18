@@ -18,7 +18,7 @@ jobs:
       - run: npm ci
 
       - name: Set deploy epoch (ms)
-        run: echo "VITE_EPOCH=$(date +%s)000" >> $GITHUB_ENV
+        run: echo "VITE_EPOCH=1771358400000" >> $GITHUB_ENV
 
       - name: Build
         run: npm run build
