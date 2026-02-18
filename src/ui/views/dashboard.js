@@ -1,6 +1,7 @@
 import { el, flag, formatMinutes, formatCountdown, countdownDisplay, formatTime, getEditionYear } from '../components.js';
 import { SCHEDULE } from '../../constants.js';
 import { TEAMS } from '../../engine/teams.js';
+import { getMatchDisplayState } from '../../engine/timeline.js';
 
 /**
  * Dashboard / "En Vivo" view.
@@ -316,6 +317,7 @@ function renderLivePhase(state) {
   const children = [];
 
   if (liveMatches.length > 0) {
+    startLiveTimelineRAF(liveMatches, state.cycleStart);
     children.push(
       el('div', {
         className: 'mb-6',
@@ -339,6 +341,7 @@ function renderLivePhase(state) {
       })
     );
   } else {
+    stopLiveTimelineRAF();
     children.push(createNextMatchCountdown(state));
   }
 
@@ -364,6 +367,46 @@ function renderLivePhase(state) {
 }
 
 let carouselIndex = 0;
+
+// Live match UX state — persists across renders to detect score changes
+const prevScores = new Map();    // matchId → { goalsA, goalsB }
+const goalFlashUntil = new Map(); // matchId → timestamp ms
+
+// Timeline RAF — updates cursor + fill at 60fps independently of full re-renders
+let liveTimelineRAF = null;
+let liveTimelineData = []; // [{ matchId, startMs, durationMs }]
+
+function updateLiveTimelines() {
+  const now = Date.now();
+  for (const d of liveTimelineData) {
+    const elapsedMin = Math.max(0, (now - d.startMs) / 60000);
+    const { minute } = getMatchDisplayState(elapsedMin);
+    const pct = `${(minute / 90 * 100).toFixed(3)}%`;
+    const fill = document.getElementById(`live-fill-${d.matchId}`);
+    const cursor = document.getElementById(`live-cursor-${d.matchId}`);
+    if (fill) fill.style.width = pct;
+    if (cursor) cursor.style.left = pct;
+  }
+  liveTimelineRAF = requestAnimationFrame(updateLiveTimelines);
+}
+
+function startLiveTimelineRAF(liveMatches, cycleStart) {
+  liveTimelineData = liveMatches.map(m => ({
+    matchId: m.matchId,
+    startMs: cycleStart + m.timing.startMin * 60 * 1000,
+  }));
+  if (!liveTimelineRAF) {
+    liveTimelineRAF = requestAnimationFrame(updateLiveTimelines);
+  }
+}
+
+function stopLiveTimelineRAF() {
+  if (liveTimelineRAF) {
+    cancelAnimationFrame(liveTimelineRAF);
+    liveTimelineRAF = null;
+  }
+  liveTimelineData = [];
+}
 
 function createNextMatchCountdown(state) {
   const { upcoming } = state;
@@ -507,75 +550,240 @@ function getRoundLabel(round) {
 }
 
 function createLiveMatchCard(match) {
+  const matchId = match.matchId;
+  const minute = match.matchMinute || match.currentMinute || 0;
+  const matchPhase = match.matchPhase || 'playing';
+  const events = match.events || [];
+  const goalsA = match.goalsA ?? 0;
+  const goalsB = match.goalsB ?? 0;
+  const maxMinute = match.extraTime ? 120 : 90;
+
+  // Detect score change → trigger flash (only during playing, not at halftime/end)
+  const prev = prevScores.get(matchId);
+  if (prev && matchPhase === 'playing' && (goalsA !== prev.goalsA || goalsB !== prev.goalsB)) {
+    goalFlashUntil.set(matchId, Date.now() + 2500);
+  }
+  prevScores.set(matchId, { goalsA, goalsB });
+  const isFlashing = (goalFlashUntil.get(matchId) || 0) > Date.now();
+
+  const roundLabel = match.type === 'group'
+    ? `Grupo ${String.fromCharCode(65 + match.group)}`
+    : getRoundLabel(match.round) || '';
+
+  const minuteDisplay = matchPhase === 'halftime'
+    ? el('span', { text: 'Descanso', className: 'text-xs text-text-secondary font-bold' })
+    : matchPhase === 'finalizado'
+    ? el('span', { text: 'Finalizado', className: 'text-xs text-text-secondary font-bold' })
+    : el('span', { text: `${minute}'`, className: 'text-xs text-live font-bold tabular-nums' });
+
   return el('div', {
-    className: 'card p-4 border-l-3 border-l-live',
+    className: `card p-4${isFlashing ? ' animate-goal-flash' : ''}`,
     children: [
+      // Header: round label + live minute/status
       el('div', {
         className: 'flex justify-between items-center mb-3',
         children: [
-          el('span', {
-            text: match.type === 'group'
-              ? `Grupo ${String.fromCharCode(65 + match.group)}`
-              : getRoundLabel(match.round) || '',
-            className: 'text-[11px] text-text-muted font-medium uppercase tracking-wider',
-          }),
+          el('span', { text: roundLabel, className: 'text-[11px] text-text-muted font-medium uppercase tracking-wider' }),
           el('div', {
             className: 'flex items-center gap-1.5',
             children: [
-              el('span', { className: 'live-dot' }),
-              el('span', {
-                text: `${match.matchMinute || match.currentMinute || 0}'`,
-                className: 'text-xs text-live font-bold tabular-nums',
-              }),
-            ],
+              matchPhase === 'playing' ? el('span', { className: 'live-dot' }) : null,
+              minuteDisplay,
+            ].filter(Boolean),
           }),
         ],
       }),
+
+      // Score row
       el('div', {
-        className: 'flex items-center gap-3',
+        className: 'flex items-center gap-3 mb-3',
         children: [
           el('div', {
             className: 'flex-1 min-w-0',
-            children: [
-              el('div', {
-                className: 'flex items-center gap-2',
-                children: [
-                  flag(match.teamA?.code, 24),
-                  el('span', { text: match.teamA?.name || '?', className: 'text-sm font-medium truncate' }),
-                ],
-              }),
-            ],
+            children: [el('div', {
+              className: 'flex items-center gap-2',
+              children: [flag(match.teamA?.code, 24), el('span', { text: match.teamA?.name || '?', className: 'text-sm font-medium truncate' })],
+            })],
           }),
           el('div', {
             className: 'flex items-center gap-1.5 shrink-0',
             children: [
-              el('span', {
-                text: String(match.goalsA ?? 0),
-                className: `score-num ${(match.goalsA ?? 0) > (match.goalsB ?? 0) ? 'score-num-winner' : ''}`,
-              }),
+              el('span', { text: String(goalsA), className: `score-num ${goalsA > goalsB ? 'score-num-winner' : ''}` }),
               el('span', { text: ':', className: 'text-text-muted text-xs font-bold' }),
-              el('span', {
-                text: String(match.goalsB ?? 0),
-                className: `score-num ${(match.goalsB ?? 0) > (match.goalsA ?? 0) ? 'score-num-winner' : ''}`,
-              }),
+              el('span', { text: String(goalsB), className: `score-num ${goalsB > goalsA ? 'score-num-winner' : ''}` }),
             ],
           }),
           el('div', {
             className: 'flex-1 min-w-0 text-right',
-            children: [
-              el('div', {
-                className: 'flex items-center gap-2 justify-end',
-                children: [
-                  el('span', { text: match.teamB?.name || '?', className: 'text-sm font-medium truncate' }),
-                  flag(match.teamB?.code, 24),
-                ],
-              }),
-            ],
+            children: [el('div', {
+              className: 'flex items-center gap-2 justify-end',
+              children: [el('span', { text: match.teamB?.name || '?', className: 'text-sm font-medium truncate' }), flag(match.teamB?.code, 24)],
+            })],
           }),
         ],
       }),
+
+      // Feature 1: Goal feed
+      events.length > 0 ? createGoalFeed(events, match) : null,
+
+      // Feature 2: Match timeline
+      createMatchTimeline(events, minute, maxMinute, matchId),
+
+      // Feature 7: Dominio bar
+      createDominioBar(match, goalsA, goalsB),
+
+      // Feature 4: Dynamic narrative
+      el('p', {
+        text: getMatchNarrative(match, minute, goalsA, goalsB, events),
+        className: 'text-[11px] text-text-muted italic text-center mt-2',
+      }),
+    ].filter(Boolean),
+  });
+}
+
+/** Feature 1: Chronological goal feed */
+function createGoalFeed(events, match) {
+  return el('div', {
+    className: 'flex flex-wrap gap-x-3 gap-y-1 justify-center mb-3',
+    children: events.map(e => {
+      const isA = e.team === 'A';
+      const team = isA ? match.teamA : match.teamB;
+      const f = flag(team?.code, 14);
+      return el('span', {
+        className: `inline-flex items-center gap-1 text-[11px] font-medium ${isA ? 'text-accent' : 'text-live'}`,
+        children: [
+          el('span', { text: `⚽ ${e.minute}'` }),
+          f,
+        ],
+      });
+    }),
+  });
+}
+
+/** Feature 2: Timeline bar with goal markers and live cursor */
+function createMatchTimeline(events, currentMinute, maxMinute, matchId) {
+  const pct = min => `${Math.min(100, (min / maxMinute) * 100).toFixed(1)}%`;
+
+  return el('div', {
+    className: 'mb-3',
+    children: [
+      el('div', {
+        className: 'relative h-4',
+        children: [
+          // Track
+          el('div', { className: 'absolute inset-x-0 top-[7px] h-[2px] bg-bg-surface rounded-full' }),
+          // Elapsed fill — id allows RAF to update smoothly at 60fps
+          el('div', {
+            id: matchId ? `live-fill-${matchId}` : undefined,
+            className: 'absolute left-0 top-[7px] h-[2px] bg-text-muted/20 rounded-full',
+            style: { width: pct(currentMinute) },
+          }),
+          // Goal markers (fixed positions, no animation needed)
+          ...events.map(e =>
+            el('div', {
+              className: `absolute w-2 h-2 top-1/2 -translate-y-1/2 -translate-x-1 rounded-full ${e.team === 'A' ? 'bg-accent' : 'bg-live'}`,
+              style: { left: pct(e.minute) },
+            })
+          ),
+          // Live cursor — id allows RAF to update smoothly at 60fps
+          el('div', {
+            id: matchId ? `live-cursor-${matchId}` : undefined,
+            className: 'absolute w-0.5 h-4 top-0 -translate-x-px bg-text-secondary/50 rounded-full',
+            style: { left: pct(currentMinute) },
+          }),
+        ],
+      }),
+      el('div', {
+        className: 'flex justify-between text-[9px] text-text-muted mt-0.5',
+        children: [
+          el('span', { text: "0'" }),
+          maxMinute > 90 ? el('span', { text: 'Prórroga', className: 'text-gold' }) : null,
+          el('span', { text: `${maxMinute}'` }),
+        ].filter(Boolean),
+      }),
     ],
   });
+}
+
+/** Feature 7: Possession-style dominio bar based on ratings + goals */
+function createDominioBar(match, goalsA, goalsB) {
+  const rA = match.teamA?.rating ?? 75;
+  const rB = match.teamB?.rating ?? 75;
+  const baseA = rA * rA;
+  const baseB = rB * rB;
+  const baseRatio = baseA / (baseA + baseB);
+  const goalShift = (goalsA - goalsB) * 0.08;
+  const domRatio = Math.max(0.15, Math.min(0.85, baseRatio + goalShift));
+  const pctA = Math.round(domRatio * 100);
+  const pctB = 100 - pctA;
+  return el('div', {
+    className: 'flex items-center gap-1.5 mb-1',
+    children: [
+      el('span', { text: `${pctA}%`, className: 'text-[10px] text-accent font-semibold tabular-nums shrink-0' }),
+      el('div', {
+        className: 'flex-1 h-[3px] rounded-full overflow-hidden flex bg-bg-surface',
+        children: [
+          el('div', { className: 'h-full bg-accent/70', style: { width: `${pctA}%` } }),
+          el('div', { className: 'h-full bg-live/70 flex-1' }),
+        ],
+      }),
+      el('span', { text: `${pctB}%`, className: 'text-[10px] text-live font-semibold tabular-nums shrink-0' }),
+    ],
+  });
+}
+
+/** Feature 4: Dynamic narrative text */
+function getMatchNarrative(match, minute, goalsA, goalsB, events) {
+  const diff = goalsA - goalsB;
+  const absDiff = Math.abs(diff);
+  const teamAhead = diff > 0 ? match.teamA : diff < 0 ? match.teamB : null;
+  const teamBehind = diff > 0 ? match.teamB : diff < 0 ? match.teamA : null;
+  const lastGoal = events.length > 0 ? events[events.length - 1] : null;
+  const recentGoal = lastGoal && (minute - lastGoal.minute) <= 4;
+  const isFinalStretch = minute >= 83;
+  const isLate = minute >= 75;
+
+  if (match.matchPhase === 'halftime') {
+    if (goalsA === goalsB) return `Descanso: empatados a ${goalsA}`;
+    return `Descanso: ${teamAhead?.name} gana la primera parte`;
+  }
+
+  if (match.matchPhase === 'finalizado') {
+    if (goalsA === goalsB) return `Empate a ${goalsA} — partido finalizado`;
+    return `${teamAhead?.name} gana ${Math.max(goalsA, goalsB)}-${Math.min(goalsA, goalsB)}`;
+  }
+
+  if (minute <= 3) return 'Partido recién comenzado';
+
+  if (recentGoal) {
+    const scorer = lastGoal.team === 'A' ? match.teamA : match.teamB;
+    if (goalsA === goalsB) return `¡${scorer?.name} empata el partido!`;
+    if (absDiff >= 2) return `¡Golazo de ${scorer?.name}! Diferencia amplia`;
+    return `¡Gol de ${scorer?.name}!`;
+  }
+
+  if (goalsA === 0 && goalsB === 0) {
+    if (isFinalStretch) return 'Sin goles y el tiempo se acaba';
+    if (isLate) return 'Sin goles — el partido sigue abierto';
+    return 'Partido sin goles de momento';
+  }
+
+  if (goalsA === goalsB) {
+    if (isFinalStretch) return `🔥 Empate — todo por decidir en el descuento`;
+    if (isLate) return `Empate a ${goalsA} — puede pasar cualquier cosa`;
+    return `Igualados a ${goalsA}`;
+  }
+
+  if (absDiff >= 3) return `${teamAhead?.name} controla el partido`;
+
+  if (isFinalStretch && absDiff === 1) {
+    return `⏱ ${teamAhead?.name} aguanta — ${teamBehind?.name} lo busca`;
+  }
+  if (isLate && absDiff === 1) return `${teamBehind?.name} busca el empate`;
+
+  return absDiff >= 2
+    ? `${teamAhead?.name} con ventaja clara`
+    : `${teamAhead?.name} por delante`;
 }
 
 function createUpcomingCard(match, state) {

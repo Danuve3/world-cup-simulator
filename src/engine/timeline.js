@@ -17,7 +17,10 @@ const GROUP_MATCHDAY_DURATION = 1920; // minutes per matchday
 const MATCHES_PER_MATCHDAY = 16; // 8 groups × 2 matches
 const SLOTS_PER_MATCHDAY = 8; // 8 time slots, 2 matches each
 const SLOT_SPACING = 240; // minutes between slot starts
-const MATCH_DURATION = 23; // minutes for a full 90-min match (compressed)
+const MATCH_DURATION = 2; // minutes for a full 90-min match — 1 game min ≈ 1.3 real seconds
+const HALFTIME_PAUSE = 10 / 60; // 10 real seconds shown as "Descanso"
+const ENDGAME_PAUSE = 10 / 60;  // 10 real seconds shown as "Finalizado"
+const MATCH_WINDOW = MATCH_DURATION + HALFTIME_PAUSE + ENDGAME_PAUSE;
 
 /**
  * Knockout round sub-schedules.
@@ -46,7 +49,7 @@ export function getGroupMatchTiming(matchday, group, matchIndex) {
   // Actually: arrange 16 matches into 8 slots of 2 each
   // Slot assignment: group index IS the slot index; both matches of the group play simultaneously
   const startMin = matchdayStart + group * SLOT_SPACING;
-  const endMin = startMin + MATCH_DURATION;
+  const endMin = startMin + MATCH_WINDOW;
 
   return { startMin, endMin };
 }
@@ -65,10 +68,32 @@ export function getKnockoutMatchTiming(round, matchIndex) {
   const totalSlots = Math.ceil(config.matches / config.perSlot);
   const slotIndex = Math.floor(matchIndex / config.perSlot);
   const slotDuration = (config.end - config.start) / totalSlots;
-  const startMin = config.start + slotIndex * slotDuration;
-  const endMin = startMin + MATCH_DURATION;
+  const startMinFloor = Math.floor(config.start + slotIndex * slotDuration);
+  const endMin = startMinFloor + MATCH_WINDOW;
 
-  return { startMin: Math.floor(startMin), endMin: Math.floor(endMin) };
+  return { startMin: startMinFloor, endMin };
+}
+
+/**
+ * Convert elapsed match time (in real minutes) to a display state.
+ * Accounts for halftime and end-of-match pauses.
+ *
+ * @param {number} elapsedMin - Real minutes since match start (within MATCH_WINDOW)
+ * @returns {{ minute: number, phase: 'playing'|'halftime'|'finalizado' }}
+ */
+export function getMatchDisplayState(elapsedMin) {
+  const half = MATCH_DURATION / 2;
+  if (elapsedMin < half) {
+    return { minute: Math.max(1, Math.min(45, Math.round((elapsedMin / half) * 45))), phase: 'playing' };
+  }
+  if (elapsedMin < half + HALFTIME_PAUSE) {
+    return { minute: 45, phase: 'halftime' };
+  }
+  if (elapsedMin < MATCH_DURATION + HALFTIME_PAUSE) {
+    const t = elapsedMin - half - HALFTIME_PAUSE;
+    return { minute: Math.max(46, Math.min(90, 46 + Math.round((t / half) * 44))), phase: 'playing' };
+  }
+  return { minute: 90, phase: 'finalizado' };
 }
 
 /**
@@ -119,16 +144,15 @@ export function getLiveMatches(cycleMinute) {
         for (let mi = 0; mi < 2; mi++) {
           const timing = getGroupMatchTiming(day, g, mi);
           if (cycleMinute >= timing.startMin && cycleMinute < timing.endMin) {
-            const matchMinute = Math.floor(
-              ((cycleMinute - timing.startMin) / MATCH_DURATION) * 90
-            );
+            const { minute: matchMinute, phase: matchPhase } = getMatchDisplayState(cycleMinute - timing.startMin);
             live.push({
               type: 'group',
               matchday: day,
               group: g,
               matchIndex: mi,
               matchId: `G-${String.fromCharCode(65 + g)}-${day}-${mi}`,
-              matchMinute: Math.min(90, Math.max(1, matchMinute)),
+              matchMinute,
+              matchPhase,
               timing,
             });
           }
@@ -142,14 +166,14 @@ export function getLiveMatches(cycleMinute) {
       for (let i = 0; i < config.matches; i++) {
         const timing = getKnockoutMatchTiming(round, i);
         if (cycleMinute >= timing.startMin && cycleMinute < timing.endMin) {
-          const progress = (cycleMinute - timing.startMin) / MATCH_DURATION;
-          const matchMinute = Math.min(90, Math.max(1, Math.floor(progress * 90)));
+          const { minute: matchMinute, phase: matchPhase } = getMatchDisplayState(cycleMinute - timing.startMin);
           live.push({
             type: 'knockout',
             round,
             matchIndex: i,
             matchId: round === 'THIRD' ? 'THIRD' : round === 'FINAL' ? 'FINAL' : `${round}-${i}`,
             matchMinute,
+            matchPhase,
             timing,
           });
         }

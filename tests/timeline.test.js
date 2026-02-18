@@ -71,7 +71,7 @@ describe('Live matches', () => {
 
   it('returns live matches during group stage', () => {
     const timing = getGroupMatchTiming(0, 0, 0);
-    const live = getLiveMatches(timing.startMin + 5);
+    const live = getLiveMatches(timing.startMin + 1); // +1 fits within 2-min MATCH_DURATION
     expect(live.length).toBeGreaterThan(0);
     expect(live[0].type).toBe('group');
   });
