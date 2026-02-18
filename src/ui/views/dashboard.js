@@ -708,34 +708,18 @@ function createDominioBar(match, goalsA, goalsB) {
   const domRatio = Math.max(0.15, Math.min(0.85, baseRatio + goalShift));
   const pctA = Math.round(domRatio * 100);
   const pctB = 100 - pctA;
-  const nameA = match.teamA?.name?.split(' ')[0] ?? '';
-  const nameB = match.teamB?.name?.split(' ')[0] ?? '';
-
   return el('div', {
-    className: 'mb-1',
+    className: 'flex items-center gap-1.5 mb-1',
     children: [
+      el('span', { text: `${pctA}%`, className: 'text-[10px] text-accent font-semibold tabular-nums shrink-0' }),
       el('div', {
-        className: 'flex items-center gap-1.5 mb-0.5',
+        className: 'flex-1 h-[3px] rounded-full overflow-hidden flex bg-bg-surface',
         children: [
-          el('span', { text: `${pctA}%`, className: 'text-[10px] text-accent font-semibold tabular-nums w-7 text-right' }),
-          el('div', {
-            className: 'flex-1 h-[3px] rounded-full overflow-hidden flex bg-bg-surface',
-            children: [
-              el('div', { className: 'h-full bg-accent/70', style: { width: `${pctA}%` } }),
-              el('div', { className: 'h-full bg-live/70 flex-1' }),
-            ],
-          }),
-          el('span', { text: `${pctB}%`, className: 'text-[10px] text-live font-semibold tabular-nums w-7' }),
+          el('div', { className: 'h-full bg-accent/70', style: { width: `${pctA}%` } }),
+          el('div', { className: 'h-full bg-live/70 flex-1' }),
         ],
       }),
-      el('div', {
-        className: 'flex justify-between text-[9px] text-text-muted px-8',
-        children: [
-          el('span', { text: nameA }),
-          el('span', { text: 'dominio', className: 'text-text-muted/50' }),
-          el('span', { text: nameB }),
-        ],
-      }),
+      el('span', { text: `${pctB}%`, className: 'text-[10px] text-live font-semibold tabular-nums shrink-0' }),
     ],
   });
 }
