@@ -1,6 +1,7 @@
 import { el, flag, formatMinutes, formatCountdown, countdownDisplay, formatTime, getEditionYear } from '../components.js';
 import { SCHEDULE } from '../../constants.js';
 import { TEAMS } from '../../engine/teams.js';
+import { getMatchDisplayState } from '../../engine/timeline.js';
 
 /**
  * Dashboard / "En Vivo" view.
@@ -378,8 +379,9 @@ let liveTimelineData = []; // [{ matchId, startMs, durationMs }]
 function updateLiveTimelines() {
   const now = Date.now();
   for (const d of liveTimelineData) {
-    const elapsed = Math.max(0, now - d.startMs);
-    const pct = `${Math.min(100, (elapsed / d.durationMs) * 100).toFixed(3)}%`;
+    const elapsedMin = Math.max(0, (now - d.startMs) / 60000);
+    const { minute } = getMatchDisplayState(elapsedMin);
+    const pct = `${(minute / 90 * 100).toFixed(3)}%`;
     const fill = document.getElementById(`live-fill-${d.matchId}`);
     const cursor = document.getElementById(`live-cursor-${d.matchId}`);
     if (fill) fill.style.width = pct;
@@ -392,7 +394,6 @@ function startLiveTimelineRAF(liveMatches, cycleStart) {
   liveTimelineData = liveMatches.map(m => ({
     matchId: m.matchId,
     startMs: cycleStart + m.timing.startMin * 60 * 1000,
-    durationMs: (m.timing.endMin - m.timing.startMin) * 60 * 1000,
   }));
   if (!liveTimelineRAF) {
     liveTimelineRAF = requestAnimationFrame(updateLiveTimelines);
@@ -551,14 +552,15 @@ function getRoundLabel(round) {
 function createLiveMatchCard(match) {
   const matchId = match.matchId;
   const minute = match.matchMinute || match.currentMinute || 0;
+  const matchPhase = match.matchPhase || 'playing';
   const events = match.events || [];
   const goalsA = match.goalsA ?? 0;
   const goalsB = match.goalsB ?? 0;
   const maxMinute = match.extraTime ? 120 : 90;
 
-  // Detect score change → trigger flash
+  // Detect score change → trigger flash (only during playing, not at halftime/end)
   const prev = prevScores.get(matchId);
-  if (prev && (goalsA !== prev.goalsA || goalsB !== prev.goalsB)) {
+  if (prev && matchPhase === 'playing' && (goalsA !== prev.goalsA || goalsB !== prev.goalsB)) {
     goalFlashUntil.set(matchId, Date.now() + 2500);
   }
   prevScores.set(matchId, { goalsA, goalsB });
@@ -568,10 +570,16 @@ function createLiveMatchCard(match) {
     ? `Grupo ${String.fromCharCode(65 + match.group)}`
     : getRoundLabel(match.round) || '';
 
+  const minuteDisplay = matchPhase === 'halftime'
+    ? el('span', { text: 'Descanso', className: 'text-xs text-text-secondary font-bold' })
+    : matchPhase === 'finalizado'
+    ? el('span', { text: 'Finalizado', className: 'text-xs text-text-secondary font-bold' })
+    : el('span', { text: `${minute}'`, className: 'text-xs text-live font-bold tabular-nums' });
+
   return el('div', {
-    className: `card p-4 border-l-3 border-l-live${isFlashing ? ' animate-goal-flash' : ''}`,
+    className: `card p-4${isFlashing ? ' animate-goal-flash' : ''}`,
     children: [
-      // Header: round label + live minute
+      // Header: round label + live minute/status
       el('div', {
         className: 'flex justify-between items-center mb-3',
         children: [
@@ -579,9 +587,9 @@ function createLiveMatchCard(match) {
           el('div', {
             className: 'flex items-center gap-1.5',
             children: [
-              el('span', { className: 'live-dot' }),
-              el('span', { text: `${minute}'`, className: 'text-xs text-live font-bold tabular-nums' }),
-            ],
+              matchPhase === 'playing' ? el('span', { className: 'live-dot' }) : null,
+              minuteDisplay,
+            ].filter(Boolean),
           }),
         ],
       }),
@@ -734,6 +742,16 @@ function getMatchNarrative(match, minute, goalsA, goalsB, events) {
   const recentGoal = lastGoal && (minute - lastGoal.minute) <= 4;
   const isFinalStretch = minute >= 83;
   const isLate = minute >= 75;
+
+  if (match.matchPhase === 'halftime') {
+    if (goalsA === goalsB) return `Descanso: empatados a ${goalsA}`;
+    return `Descanso: ${teamAhead?.name} gana la primera parte`;
+  }
+
+  if (match.matchPhase === 'finalizado') {
+    if (goalsA === goalsB) return `Empate a ${goalsA} — partido finalizado`;
+    return `${teamAhead?.name} gana ${Math.max(goalsA, goalsB)}-${Math.min(goalsA, goalsB)}`;
+  }
 
   if (minute <= 3) return 'Partido recién comenzado';
 
