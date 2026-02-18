@@ -127,35 +127,83 @@ function findValidGroup(groups, team) {
 }
 
 /**
- * Select 32 qualified teams: host + champion + top remaining by rating.
- * Uses PRNG for slight randomness in qualification (borderline teams).
+ * Confederation qualification spots.
+ * Host gets a bonus spot (outside these quotas). Defending champion counts
+ * toward their confederation's quota. Total: 31 + 1 host = 32.
+ */
+const CONFEDERATION_SPOTS = {
+  UEFA:      13,
+  CONMEBOL:   5,
+  CAF:        5,
+  AFC:        4,
+  CONCACAF:   3,
+  OFC:        1,
+};
+
+/**
+ * Weighted sampling without replacement.
+ * Picks `count` items from `items` proportionally to `weights`.
+ */
+function weightedPickN(rng, items, weights, count) {
+  const pool = items.map((item, i) => ({ item, w: weights[i] }));
+  const picked = [];
+  const n = Math.min(count, pool.length);
+  for (let i = 0; i < n; i++) {
+    const total = pool.reduce((s, p) => s + p.w, 0);
+    let r = rng.next() * total;
+    let idx = pool.length - 1;
+    for (let j = 0; j < pool.length; j++) {
+      r -= pool[j].w;
+      if (r <= 0) { idx = j; break; }
+    }
+    picked.push(pool[idx].item);
+    pool.splice(idx, 1);
+  }
+  return picked;
+}
+
+/**
+ * Select 32 qualified teams using confederation quotas and rating-weighted
+ * random sampling. Every team has a non-zero chance proportional to rating^4,
+ * so giants almost always qualify while minnows occasionally surprise.
  */
 function selectQualifiedTeams(rng, host, defendingChampionCode) {
   const selected = new Set();
   const result = [];
 
-  // Host always qualifies
+  // Host: bonus spot, does not consume their confederation's quota
   selected.add(host.code);
   result.push(host);
 
-  // Defending champion always qualifies
-  if (defendingChampionCode) {
-    const champ = TEAMS.find(t => t.code === defendingChampionCode);
-    if (champ && !selected.has(champ.code)) {
-      selected.add(champ.code);
-      result.push(champ);
-    }
+  // Defending champion: auto-qualifies, counts toward their confederation quota
+  const champion = defendingChampionCode
+    ? TEAMS.find(t => t.code === defendingChampionCode)
+    : null;
+  if (champion && !selected.has(champion.code)) {
+    selected.add(champion.code);
+    result.push(champion);
   }
 
-  // Remaining: sort by rating with slight random perturbation
-  const candidates = TEAMS
-    .filter(t => !selected.has(t.code))
-    .map(t => ({ ...t, sortKey: t.rating + rng.nextInt(-3, 3) }))
-    .sort((a, b) => b.sortKey - a.sortKey);
+  // Fill each confederation's open spots with weighted random selection
+  for (const [conf, totalSpots] of Object.entries(CONFEDERATION_SPOTS)) {
+    // Champion (if from this conf) already occupies one spot
+    const reservedInConf = result.filter(
+      t => t.confederation === conf && t.code !== host.code
+    ).length;
+    const openSpots = totalSpots - reservedInConf;
+    if (openSpots <= 0) continue;
 
-  for (const c of candidates) {
-    if (result.length >= GROUPS.TOTAL_TEAMS) break;
-    result.push(c);
+    const candidates = TEAMS.filter(
+      t => t.confederation === conf && !selected.has(t.code)
+    );
+    if (candidates.length === 0) continue;
+
+    const weights = candidates.map(t => Math.pow(t.rating, 4));
+    const picked = weightedPickN(rng, candidates, weights, openSpots);
+    for (const team of picked) {
+      selected.add(team.code);
+      result.push(team);
+    }
   }
 
   return result;
