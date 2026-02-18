@@ -88,10 +88,10 @@ function simulateMinute(rng, minute, teamA, teamB, goalsA, goalsB) {
   const goalProb = MATCH.GOAL_PROBABILITY_BASE * ratingRatio + fatigueBoost;
 
   if (rng.nextBool(goalProb)) {
-    // Scoring team weighted by rating³ — strongly favors better team,
+    // Scoring team weighted by rating⁴ — strongly favors better team,
     // but still allows upsets (surprise factor preserved)
-    const powerA = rA * rA * rA;
-    const powerB = rB * rB * rB;
+    const powerA = rA * rA * rA * rA;
+    const powerB = rB * rB * rB * rB;
     const isTeamA = rng.nextBool(powerA / (powerA + powerB));
     return {
       type: 'goal',

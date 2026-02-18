@@ -31,7 +31,7 @@ export const SCHEDULE = {
 export const MATCH = {
   REGULAR_MINUTES: 90,
   EXTRA_TIME_MINUTES: 30,
-  GOAL_PROBABILITY_BASE: 0.025,  // ~2.5% per minute
+  GOAL_PROBABILITY_BASE: 0.027,  // ~2.7% per minute (≈WC historical average)
   FATIGUE_START: 75,
   FATIGUE_BOOST: 0.005,
   PENALTY_ROUNDS: 5,
