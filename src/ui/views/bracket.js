@@ -1,5 +1,6 @@
 import { el, flag } from '../components.js';
 import { getKnockoutMatchTiming, getGroupMatchTiming } from '../../engine/timeline.js';
+import { computeStandings } from '../../engine/group-stage.js';
 import { SCHEDULE } from '../../constants.js';
 
 // R16 bracket structure: which group pairs feed each match
@@ -14,24 +15,56 @@ const R16_GROUPS = [
   [7, 6], // 1H vs 2G
 ];
 
-function isGroupComplete(g, cycleMinute) {
-  const t = getGroupMatchTiming(2, g, 0);
-  return t.endMin <= cycleMinute;
+/**
+ * Returns true if a group position (0=1st, 1=2nd) is mathematically confirmed.
+ * Conservative: only confirms when the team is strictly ahead on points,
+ * regardless of remaining match outcomes.
+ */
+function isPositionConfirmed(standings, position) {
+  if (!standings || standings.length < 4) return false;
+  const team = standings[position];
+  if (!team) return false;
+
+  // All 3 matchdays done
+  if (standings.every(t => t.played === 3)) return true;
+
+  if (position === 0) {
+    const challenger = standings[1];
+    if (!challenger) return true;
+    return team.points > challenger.points + (3 - challenger.played) * 3;
+  }
+
+  if (position === 1) {
+    return standings.slice(2).every(t =>
+      team.points > t.points + (3 - t.played) * 3
+    );
+  }
+
+  return false;
 }
 
-function sanitizeKnockout(ko, cycleMinute) {
+function sanitizeKnockout(ko, cycleMinute, groupStandings) {
   const ph = name => ({ code: null, name });
   const isMatchDone = (round, idx) => {
     const t = getKnockoutMatchTiming(round, idx);
     return t.endMin <= cycleMinute;
   };
 
+  const resolveGroupPos = (groupIndex, position) => {
+    const standings = groupStandings[groupIndex];
+    const label = `${position + 1}${String.fromCharCode(65 + groupIndex)}`;
+    if (standings && isPositionConfirmed(standings, position)) {
+      return standings[position].team;
+    }
+    return ph(label);
+  };
+
   const r16 = ko.r16.map((m, i) => {
     const [gA, gB] = R16_GROUPS[i];
     return {
       ...m,
-      teamA: isGroupComplete(gA, cycleMinute) ? m.teamA : ph(`1${String.fromCharCode(65 + gA)}`),
-      teamB: isGroupComplete(gB, cycleMinute) ? m.teamB : ph(`2${String.fromCharCode(65 + gB)}`),
+      teamA: resolveGroupPos(gA, 0),
+      teamB: resolveGroupPos(gB, 1),
     };
   });
 
@@ -80,16 +113,8 @@ export function renderBracket(container, state) {
 
   const { tournament, cycleMinute } = state;
 
-  // Hide bracket until at least one group is complete
-  let anyGroupComplete = false;
-  for (let g = 0; g < 8; g++) {
-    if (isGroupComplete(g, cycleMinute)) {
-      anyGroupComplete = true;
-      break;
-    }
-  }
-
-  if (!anyGroupComplete) {
+  // During draw, groups aren't formed yet
+  if (cycleMinute < SCHEDULE.DRAW.end) {
     container.appendChild(
       el('h2', { text: 'Eliminatorias', className: 'text-lg md:text-xl font-bold mb-5' })
     );
@@ -98,21 +123,22 @@ export function renderBracket(container, state) {
         className: 'card p-12 text-center',
         children: [
           el('div', { text: '\ud83c\udfc6', className: 'text-4xl mb-3' }),
-          el('p', {
-            text: cycleMinute < SCHEDULE.DRAW.end ? 'Sorteo en curso' : 'Fase de grupos en juego',
-            className: 'text-sm text-text-secondary',
-          }),
-          el('p', {
-            text: 'El bracket se revelar\u00e1 conforme finalicen los grupos',
-            className: 'text-xs text-text-muted mt-1',
-          }),
+          el('p', { text: 'Sorteo en curso', className: 'text-sm text-text-secondary' }),
+          el('p', { text: 'Los grupos se revelar\u00e1n al finalizar el sorteo', className: 'text-xs text-text-muted mt-1' }),
         ],
       })
     );
     return;
   }
 
-  const ko = sanitizeKnockout(tournament.knockout, cycleMinute);
+  // Compute standings from completed group matches for bracket slot resolution
+  const completedGroupMatches = tournament.groupStage.matches.filter(m => {
+    const timing = getGroupMatchTiming(m.matchday, m.group, m.matchIndex);
+    return timing.endMin <= cycleMinute;
+  });
+  const groupStandings = computeStandings(tournament.draw.groups, completedGroupMatches);
+
+  const ko = sanitizeKnockout(tournament.knockout, cycleMinute, groupStandings);
 
   // Determine which matches are completed
   const isComplete = (round, idx) => {
