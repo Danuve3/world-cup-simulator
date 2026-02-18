@@ -316,6 +316,7 @@ function renderLivePhase(state) {
   const children = [];
 
   if (liveMatches.length > 0) {
+    startLiveTimelineRAF(liveMatches, state.cycleStart);
     children.push(
       el('div', {
         className: 'mb-6',
@@ -339,6 +340,7 @@ function renderLivePhase(state) {
       })
     );
   } else {
+    stopLiveTimelineRAF();
     children.push(createNextMatchCountdown(state));
   }
 
@@ -368,6 +370,42 @@ let carouselIndex = 0;
 // Live match UX state — persists across renders to detect score changes
 const prevScores = new Map();    // matchId → { goalsA, goalsB }
 const goalFlashUntil = new Map(); // matchId → timestamp ms
+
+// Timeline RAF — updates cursor + fill at 60fps independently of full re-renders
+let liveTimelineRAF = null;
+let liveTimelineData = []; // [{ matchId, startMs, durationMs }]
+
+function updateLiveTimelines() {
+  const now = Date.now();
+  for (const d of liveTimelineData) {
+    const elapsed = Math.max(0, now - d.startMs);
+    const pct = `${Math.min(100, (elapsed / d.durationMs) * 100).toFixed(3)}%`;
+    const fill = document.getElementById(`live-fill-${d.matchId}`);
+    const cursor = document.getElementById(`live-cursor-${d.matchId}`);
+    if (fill) fill.style.width = pct;
+    if (cursor) cursor.style.left = pct;
+  }
+  liveTimelineRAF = requestAnimationFrame(updateLiveTimelines);
+}
+
+function startLiveTimelineRAF(liveMatches, cycleStart) {
+  liveTimelineData = liveMatches.map(m => ({
+    matchId: m.matchId,
+    startMs: cycleStart + m.timing.startMin * 60 * 1000,
+    durationMs: (m.timing.endMin - m.timing.startMin) * 60 * 1000,
+  }));
+  if (!liveTimelineRAF) {
+    liveTimelineRAF = requestAnimationFrame(updateLiveTimelines);
+  }
+}
+
+function stopLiveTimelineRAF() {
+  if (liveTimelineRAF) {
+    cancelAnimationFrame(liveTimelineRAF);
+    liveTimelineRAF = null;
+  }
+  liveTimelineData = [];
+}
 
 function createNextMatchCountdown(state) {
   const { upcoming } = state;
@@ -581,7 +619,7 @@ function createLiveMatchCard(match) {
       events.length > 0 ? createGoalFeed(events, match) : null,
 
       // Feature 2: Match timeline
-      createMatchTimeline(events, minute, maxMinute),
+      createMatchTimeline(events, minute, maxMinute, matchId),
 
       // Feature 7: Dominio bar
       createDominioBar(match, goalsA, goalsB),
@@ -615,7 +653,7 @@ function createGoalFeed(events, match) {
 }
 
 /** Feature 2: Timeline bar with goal markers and live cursor */
-function createMatchTimeline(events, currentMinute, maxMinute) {
+function createMatchTimeline(events, currentMinute, maxMinute, matchId) {
   const pct = min => `${Math.min(100, (min / maxMinute) * 100).toFixed(1)}%`;
 
   return el('div', {
@@ -626,20 +664,22 @@ function createMatchTimeline(events, currentMinute, maxMinute) {
         children: [
           // Track
           el('div', { className: 'absolute inset-x-0 top-[7px] h-[2px] bg-bg-surface rounded-full' }),
-          // Elapsed fill
+          // Elapsed fill — id allows RAF to update smoothly at 60fps
           el('div', {
+            id: matchId ? `live-fill-${matchId}` : undefined,
             className: 'absolute left-0 top-[7px] h-[2px] bg-text-muted/20 rounded-full',
             style: { width: pct(currentMinute) },
           }),
-          // Goal markers
+          // Goal markers (fixed positions, no animation needed)
           ...events.map(e =>
             el('div', {
               className: `absolute w-2 h-2 top-1/2 -translate-y-1/2 -translate-x-1 rounded-full ${e.team === 'A' ? 'bg-accent' : 'bg-live'}`,
               style: { left: pct(e.minute) },
             })
           ),
-          // Live cursor
+          // Live cursor — id allows RAF to update smoothly at 60fps
           el('div', {
+            id: matchId ? `live-cursor-${matchId}` : undefined,
             className: 'absolute w-0.5 h-4 top-0 -translate-x-px bg-text-secondary/50 rounded-full',
             style: { left: pct(currentMinute) },
           }),
