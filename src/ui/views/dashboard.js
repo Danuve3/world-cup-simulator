@@ -580,8 +580,8 @@ function createLiveMatchCard(match) {
 
 function createUpcomingCard(match, state) {
   const nextMatchStartMs = state.cycleStart + match.startMin * 60 * 1000;
-  const msUntil = nextMatchStartMs - state.timestamp;
-  const minsAway = Math.max(0, Math.floor(msUntil / 60000));
+  const d = new Date(nextMatchStartMs);
+  const dateStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
   return el('div', {
     className: 'card p-3',
@@ -613,7 +613,7 @@ function createUpcomingCard(match, state) {
         className: 'text-center mt-1.5',
         children: [
           el('span', {
-            text: `en ${formatMinutes(minsAway)}`,
+            text: dateStr,
             className: 'text-[11px] text-text-muted tabular-nums',
           }),
         ],
