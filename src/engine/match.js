@@ -82,16 +82,16 @@ function simulateMinute(rng, minute, teamA, teamB, goalsA, goalsB) {
     fatigueBoost = MATCH.FATIGUE_BOOST;
   }
 
-  // Total goal probability scales with rating mismatch:
-  // evenly-matched teams play more cautiously; dominant teams generate more chances
+  // Total goal probability scales linearly with rating mismatch:
+  // dominant teams create significantly more chances than evenly-matched ones
   const ratingRatio = Math.max(rA, rB) / Math.min(rA, rB);
-  const goalProb = MATCH.GOAL_PROBABILITY_BASE * Math.sqrt(ratingRatio) + fatigueBoost;
+  const goalProb = MATCH.GOAL_PROBABILITY_BASE * ratingRatio + fatigueBoost;
 
   if (rng.nextBool(goalProb)) {
-    // Scoring team weighted by rating² — much more dominant than linear,
+    // Scoring team weighted by rating³ — strongly favors better team,
     // but still allows upsets (surprise factor preserved)
-    const powerA = rA * rA;
-    const powerB = rB * rB;
+    const powerA = rA * rA * rA;
+    const powerB = rB * rB * rB;
     const isTeamA = rng.nextBool(powerA / (powerA + powerB));
     return {
       type: 'goal',
