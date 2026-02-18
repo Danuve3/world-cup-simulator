@@ -198,7 +198,7 @@ function selectQualifiedTeams(rng, host, defendingChampionCode) {
     );
     if (candidates.length === 0) continue;
 
-    const weights = candidates.map(t => Math.pow(t.rating, 8));
+    const weights = candidates.map(t => Math.pow(t.rating, 10));
     const picked = weightedPickN(rng, candidates, weights, openSpots);
     for (const team of picked) {
       selected.add(team.code);
