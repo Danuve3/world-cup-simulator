@@ -581,7 +581,7 @@ function createLiveMatchCard(match) {
 function createUpcomingCard(match, state) {
   const nextMatchStartMs = state.cycleStart + match.startMin * 60 * 1000;
   const d = new Date(nextMatchStartMs);
-  const dateStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const dateStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} - ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
   return el('div', {
     className: 'card p-3',
