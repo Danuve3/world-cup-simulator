@@ -365,6 +365,10 @@ function renderLivePhase(state) {
 
 let carouselIndex = 0;
 
+// Live match UX state — persists across renders to detect score changes
+const prevScores = new Map();    // matchId → { goalsA, goalsB }
+const goalFlashUntil = new Map(); // matchId → timestamp ms
+
 function createNextMatchCountdown(state) {
   const { upcoming } = state;
 
@@ -507,75 +511,237 @@ function getRoundLabel(round) {
 }
 
 function createLiveMatchCard(match) {
+  const matchId = match.matchId;
+  const minute = match.matchMinute || match.currentMinute || 0;
+  const events = match.events || [];
+  const goalsA = match.goalsA ?? 0;
+  const goalsB = match.goalsB ?? 0;
+  const maxMinute = match.extraTime ? 120 : 90;
+
+  // Detect score change → trigger flash
+  const prev = prevScores.get(matchId);
+  if (prev && (goalsA !== prev.goalsA || goalsB !== prev.goalsB)) {
+    goalFlashUntil.set(matchId, Date.now() + 2500);
+  }
+  prevScores.set(matchId, { goalsA, goalsB });
+  const isFlashing = (goalFlashUntil.get(matchId) || 0) > Date.now();
+
+  const roundLabel = match.type === 'group'
+    ? `Grupo ${String.fromCharCode(65 + match.group)}`
+    : getRoundLabel(match.round) || '';
+
   return el('div', {
-    className: 'card p-4 border-l-3 border-l-live',
+    className: `card p-4 border-l-3 border-l-live${isFlashing ? ' animate-goal-flash' : ''}`,
     children: [
+      // Header: round label + live minute
       el('div', {
         className: 'flex justify-between items-center mb-3',
         children: [
-          el('span', {
-            text: match.type === 'group'
-              ? `Grupo ${String.fromCharCode(65 + match.group)}`
-              : getRoundLabel(match.round) || '',
-            className: 'text-[11px] text-text-muted font-medium uppercase tracking-wider',
-          }),
+          el('span', { text: roundLabel, className: 'text-[11px] text-text-muted font-medium uppercase tracking-wider' }),
           el('div', {
             className: 'flex items-center gap-1.5',
             children: [
               el('span', { className: 'live-dot' }),
-              el('span', {
-                text: `${match.matchMinute || match.currentMinute || 0}'`,
-                className: 'text-xs text-live font-bold tabular-nums',
-              }),
+              el('span', { text: `${minute}'`, className: 'text-xs text-live font-bold tabular-nums' }),
             ],
           }),
         ],
       }),
+
+      // Score row
       el('div', {
-        className: 'flex items-center gap-3',
+        className: 'flex items-center gap-3 mb-3',
         children: [
           el('div', {
             className: 'flex-1 min-w-0',
-            children: [
-              el('div', {
-                className: 'flex items-center gap-2',
-                children: [
-                  flag(match.teamA?.code, 24),
-                  el('span', { text: match.teamA?.name || '?', className: 'text-sm font-medium truncate' }),
-                ],
-              }),
-            ],
+            children: [el('div', {
+              className: 'flex items-center gap-2',
+              children: [flag(match.teamA?.code, 24), el('span', { text: match.teamA?.name || '?', className: 'text-sm font-medium truncate' })],
+            })],
           }),
           el('div', {
             className: 'flex items-center gap-1.5 shrink-0',
             children: [
-              el('span', {
-                text: String(match.goalsA ?? 0),
-                className: `score-num ${(match.goalsA ?? 0) > (match.goalsB ?? 0) ? 'score-num-winner' : ''}`,
-              }),
+              el('span', { text: String(goalsA), className: `score-num ${goalsA > goalsB ? 'score-num-winner' : ''}` }),
               el('span', { text: ':', className: 'text-text-muted text-xs font-bold' }),
-              el('span', {
-                text: String(match.goalsB ?? 0),
-                className: `score-num ${(match.goalsB ?? 0) > (match.goalsA ?? 0) ? 'score-num-winner' : ''}`,
-              }),
+              el('span', { text: String(goalsB), className: `score-num ${goalsB > goalsA ? 'score-num-winner' : ''}` }),
             ],
           }),
           el('div', {
             className: 'flex-1 min-w-0 text-right',
+            children: [el('div', {
+              className: 'flex items-center gap-2 justify-end',
+              children: [el('span', { text: match.teamB?.name || '?', className: 'text-sm font-medium truncate' }), flag(match.teamB?.code, 24)],
+            })],
+          }),
+        ],
+      }),
+
+      // Feature 1: Goal feed
+      events.length > 0 ? createGoalFeed(events, match) : null,
+
+      // Feature 2: Match timeline
+      createMatchTimeline(events, minute, maxMinute),
+
+      // Feature 7: Dominio bar
+      createDominioBar(match, goalsA, goalsB),
+
+      // Feature 4: Dynamic narrative
+      el('p', {
+        text: getMatchNarrative(match, minute, goalsA, goalsB, events),
+        className: 'text-[11px] text-text-muted italic text-center mt-2',
+      }),
+    ].filter(Boolean),
+  });
+}
+
+/** Feature 1: Chronological goal feed */
+function createGoalFeed(events, match) {
+  return el('div', {
+    className: 'flex flex-wrap gap-x-3 gap-y-1 justify-center mb-3 pb-2 border-b border-border-subtle',
+    children: events.map(e => {
+      const isA = e.team === 'A';
+      const team = isA ? match.teamA : match.teamB;
+      const f = flag(team?.code, 14);
+      return el('span', {
+        className: `inline-flex items-center gap-1 text-[11px] font-medium ${isA ? 'text-accent' : 'text-live'}`,
+        children: [
+          el('span', { text: `⚽ ${e.minute}'` }),
+          f,
+        ],
+      });
+    }),
+  });
+}
+
+/** Feature 2: Timeline bar with goal markers and live cursor */
+function createMatchTimeline(events, currentMinute, maxMinute) {
+  const pct = min => `${Math.min(100, (min / maxMinute) * 100).toFixed(1)}%`;
+
+  return el('div', {
+    className: 'mb-3',
+    children: [
+      el('div', {
+        className: 'relative h-4',
+        children: [
+          // Track
+          el('div', { className: 'absolute inset-x-0 top-[7px] h-[2px] bg-bg-surface rounded-full' }),
+          // Elapsed fill
+          el('div', {
+            className: 'absolute left-0 top-[7px] h-[2px] bg-text-muted/20 rounded-full',
+            style: { width: pct(currentMinute) },
+          }),
+          // Goal markers
+          ...events.map(e =>
+            el('div', {
+              className: `absolute w-2 h-2 top-1/2 -translate-y-1/2 -translate-x-1 rounded-full ${e.team === 'A' ? 'bg-accent' : 'bg-live'}`,
+              style: { left: pct(e.minute) },
+            })
+          ),
+          // Live cursor
+          el('div', {
+            className: 'absolute w-0.5 h-4 top-0 -translate-x-px bg-text-secondary/50 rounded-full',
+            style: { left: pct(currentMinute) },
+          }),
+        ],
+      }),
+      el('div', {
+        className: 'flex justify-between text-[9px] text-text-muted mt-0.5',
+        children: [
+          el('span', { text: "0'" }),
+          maxMinute > 90 ? el('span', { text: 'Prórroga', className: 'text-gold' }) : null,
+          el('span', { text: `${maxMinute}'` }),
+        ].filter(Boolean),
+      }),
+    ],
+  });
+}
+
+/** Feature 7: Possession-style dominio bar based on ratings + goals */
+function createDominioBar(match, goalsA, goalsB) {
+  const rA = match.teamA?.rating ?? 75;
+  const rB = match.teamB?.rating ?? 75;
+  const baseA = rA * rA;
+  const baseB = rB * rB;
+  const baseRatio = baseA / (baseA + baseB);
+  const goalShift = (goalsA - goalsB) * 0.08;
+  const domRatio = Math.max(0.15, Math.min(0.85, baseRatio + goalShift));
+  const pctA = Math.round(domRatio * 100);
+  const pctB = 100 - pctA;
+  const nameA = match.teamA?.name?.split(' ')[0] ?? '';
+  const nameB = match.teamB?.name?.split(' ')[0] ?? '';
+
+  return el('div', {
+    className: 'mb-1',
+    children: [
+      el('div', {
+        className: 'flex items-center gap-1.5 mb-0.5',
+        children: [
+          el('span', { text: `${pctA}%`, className: 'text-[10px] text-accent font-semibold tabular-nums w-7 text-right' }),
+          el('div', {
+            className: 'flex-1 h-[3px] rounded-full overflow-hidden flex bg-bg-surface',
             children: [
-              el('div', {
-                className: 'flex items-center gap-2 justify-end',
-                children: [
-                  el('span', { text: match.teamB?.name || '?', className: 'text-sm font-medium truncate' }),
-                  flag(match.teamB?.code, 24),
-                ],
-              }),
+              el('div', { className: 'h-full bg-accent/70', style: { width: `${pctA}%` } }),
+              el('div', { className: 'h-full bg-live/70 flex-1' }),
             ],
           }),
+          el('span', { text: `${pctB}%`, className: 'text-[10px] text-live font-semibold tabular-nums w-7' }),
+        ],
+      }),
+      el('div', {
+        className: 'flex justify-between text-[9px] text-text-muted px-8',
+        children: [
+          el('span', { text: nameA }),
+          el('span', { text: 'dominio', className: 'text-text-muted/50' }),
+          el('span', { text: nameB }),
         ],
       }),
     ],
   });
+}
+
+/** Feature 4: Dynamic narrative text */
+function getMatchNarrative(match, minute, goalsA, goalsB, events) {
+  const diff = goalsA - goalsB;
+  const absDiff = Math.abs(diff);
+  const teamAhead = diff > 0 ? match.teamA : diff < 0 ? match.teamB : null;
+  const teamBehind = diff > 0 ? match.teamB : diff < 0 ? match.teamA : null;
+  const lastGoal = events.length > 0 ? events[events.length - 1] : null;
+  const recentGoal = lastGoal && (minute - lastGoal.minute) <= 4;
+  const isFinalStretch = minute >= 83;
+  const isLate = minute >= 75;
+
+  if (minute <= 3) return 'Partido recién comenzado';
+
+  if (recentGoal) {
+    const scorer = lastGoal.team === 'A' ? match.teamA : match.teamB;
+    if (goalsA === goalsB) return `¡${scorer?.name} empata el partido!`;
+    if (absDiff >= 2) return `¡Golazo de ${scorer?.name}! Diferencia amplia`;
+    return `¡Gol de ${scorer?.name}!`;
+  }
+
+  if (goalsA === 0 && goalsB === 0) {
+    if (isFinalStretch) return 'Sin goles y el tiempo se acaba';
+    if (isLate) return 'Sin goles — el partido sigue abierto';
+    return 'Partido sin goles de momento';
+  }
+
+  if (goalsA === goalsB) {
+    if (isFinalStretch) return `🔥 Empate — todo por decidir en el descuento`;
+    if (isLate) return `Empate a ${goalsA} — puede pasar cualquier cosa`;
+    return `Igualados a ${goalsA}`;
+  }
+
+  if (absDiff >= 3) return `${teamAhead?.name} controla el partido`;
+
+  if (isFinalStretch && absDiff === 1) {
+    return `⏱ ${teamAhead?.name} aguanta — ${teamBehind?.name} lo busca`;
+  }
+  if (isLate && absDiff === 1) return `${teamBehind?.name} busca el empate`;
+
+  return absDiff >= 2
+    ? `${teamAhead?.name} con ventaja clara`
+    : `${teamAhead?.name} por delante`;
 }
 
 function createUpcomingCard(match, state) {
