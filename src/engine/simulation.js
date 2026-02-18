@@ -38,12 +38,15 @@ export function getNow() {
  */
 export function timestampToEdition(timestamp) {
   const ts = timestamp ?? getNow();
-  const totalMinutes = Math.floor((ts - EPOCH) / (60 * 1000));
+  const totalMinutesExact = (ts - EPOCH) / (60 * 1000);
+  const totalMinutes = Math.floor(totalMinutesExact);
   const edition = Math.floor(totalMinutes / CYCLE_DURATION);
   const cycleMinute = totalMinutes % CYCLE_DURATION;
+  // Exact (float) cycle minute for smooth match-clock interpolation
+  const cycleMinuteExact = totalMinutesExact - edition * CYCLE_DURATION;
   const cycleStart = EPOCH + edition * CYCLE_DURATION * 60 * 1000;
 
-  return { edition: Math.max(0, edition), cycleMinute, cycleStart };
+  return { edition: Math.max(0, edition), cycleMinute, cycleMinuteExact, cycleStart };
 }
 
 /**
@@ -53,12 +56,12 @@ export function timestampToEdition(timestamp) {
  * @returns {object} Complete UI state
  */
 export function getCurrentState(timestamp) {
-  const { edition, cycleMinute, cycleStart } = timestampToEdition(timestamp);
+  const { edition, cycleMinute, cycleMinuteExact, cycleStart } = timestampToEdition(timestamp);
   const phase = getPhaseAtMinute(cycleMinute);
   const tournament = simulateTournament(edition);
 
-  // Live matches
-  const liveMatchInfos = getLiveMatches(cycleMinute);
+  // Live matches — use exact (float) minute for smooth game-clock interpolation
+  const liveMatchInfos = getLiveMatches(cycleMinuteExact);
   const liveMatches = liveMatchInfos.map(info => {
     if (info.type === 'group') {
       const groupTeams = tournament.draw.groups[info.group];

@@ -17,7 +17,7 @@ const GROUP_MATCHDAY_DURATION = 1920; // minutes per matchday
 const MATCHES_PER_MATCHDAY = 16; // 8 groups × 2 matches
 const SLOTS_PER_MATCHDAY = 8; // 8 time slots, 2 matches each
 const SLOT_SPACING = 240; // minutes between slot starts
-const MATCH_DURATION = 23; // minutes for a full 90-min match (compressed)
+const MATCH_DURATION = 2; // minutes for a full 90-min match — 1 game min ≈ 1.3 real seconds
 
 /**
  * Knockout round sub-schedules.
