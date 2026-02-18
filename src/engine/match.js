@@ -73,10 +73,8 @@ export function simulateMatch(edition, matchId, teamA, teamB, allowDraw = true) 
  * Returns a goal event or null.
  */
 function simulateMinute(rng, minute, teamA, teamB, goalsA, goalsB) {
-  // Base probability adjusted by team ratings
-  const totalRating = teamA.rating + teamB.rating;
-  const ratioA = teamA.rating / totalRating;
-  const ratioB = teamB.rating / totalRating;
+  const rA = teamA.rating;
+  const rB = teamB.rating;
 
   // Fatigue increases goal chance late in the game
   let fatigueBoost = 0;
@@ -84,12 +82,17 @@ function simulateMinute(rng, minute, teamA, teamB, goalsA, goalsB) {
     fatigueBoost = MATCH.FATIGUE_BOOST;
   }
 
-  const goalProb = MATCH.GOAL_PROBABILITY_BASE + fatigueBoost;
+  // Total goal probability scales with rating mismatch:
+  // evenly-matched teams play more cautiously; dominant teams generate more chances
+  const ratingRatio = Math.max(rA, rB) / Math.min(rA, rB);
+  const goalProb = MATCH.GOAL_PROBABILITY_BASE * Math.sqrt(ratingRatio) + fatigueBoost;
 
-  // Check if a goal happens this minute
   if (rng.nextBool(goalProb)) {
-    // Determine which team scores (weighted by rating)
-    const isTeamA = rng.nextBool(ratioA);
+    // Scoring team weighted by rating² — much more dominant than linear,
+    // but still allows upsets (surprise factor preserved)
+    const powerA = rA * rA;
+    const powerB = rB * rB;
+    const isTeamA = rng.nextBool(powerA / (powerA + powerB));
     return {
       type: 'goal',
       minute,
