@@ -636,7 +636,7 @@ function createLiveMatchCard(match) {
 /** Feature 1: Chronological goal feed */
 function createGoalFeed(events, match) {
   return el('div', {
-    className: 'flex flex-wrap gap-x-3 gap-y-1 justify-center mb-3 pb-2 border-b border-border-subtle',
+    className: 'flex flex-wrap gap-x-3 gap-y-1 justify-center mb-3',
     children: events.map(e => {
       const isA = e.team === 'A';
       const team = isA ? match.teamA : match.teamB;
