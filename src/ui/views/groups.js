@@ -271,8 +271,8 @@ function createInlineMatchResult(m, isLive) {
   const aWon = m.goalsA > m.goalsB;
   const bWon = m.goalsB > m.goalsA;
 
-  return el('div', {
-    className: `flex items-center gap-1.5 text-[11px]${isLive ? ' bg-yellow-500/10 -mx-1 px-1 rounded py-0.5' : ''}`,
+  const row = el('div', {
+    className: `flex items-center gap-1.5 text-[11px]${isLive ? ' bg-yellow-500/10 -mx-1 px-1 rounded py-0.5' : ' cursor-pointer'}`,
     children: [
       el('div', {
         className: 'flex items-center gap-1 flex-1 min-w-0 justify-end',
@@ -304,6 +304,53 @@ function createInlineMatchResult(m, isLive) {
         children: [
           flag(m.teamB.code, 14),
           el('span', { text: m.teamB.name, className: `truncate ${isLive ? 'font-semibold' : bWon ? 'font-semibold' : 'text-text-secondary'}` }),
+        ],
+      }),
+    ],
+  });
+
+  if (isLive) return row;
+
+  // Completed: wrap with clickable toggle for goal detail
+  const detailEl = createGroupMatchDetail(m);
+  detailEl.style.display = 'none';
+  let expanded = false;
+  row.addEventListener('click', () => {
+    expanded = !expanded;
+    detailEl.style.display = expanded ? 'block' : 'none';
+  });
+  return el('div', { children: [row, detailEl] });
+}
+
+function createGroupMatchDetail(m) {
+  const events = m.events || [];
+  const maxMinute = m.extraTime ? 120 : 90;
+  const pct = min => `${Math.min(100, (min / maxMinute) * 100).toFixed(1)}%`;
+  const goalsA = events.filter(e => e.team === 'A');
+  const goalsB = events.filter(e => e.team === 'B');
+
+  return el('div', {
+    className: 'pt-1.5 pb-0.5',
+    children: [
+      events.length === 0
+        ? el('p', { text: 'Sin goles', className: 'text-[10px] text-text-muted text-center' })
+        : el('div', {
+            className: 'flex gap-2 mb-1',
+            children: [
+              el('div', { className: 'flex-1 flex flex-col gap-0.5', children: goalsA.map(e => el('div', { text: `⚽ ${e.minute}'`, className: 'text-[10px] text-accent font-medium' })) }),
+              el('div', { className: 'shrink-0 w-8' }),
+              el('div', { className: 'flex-1 flex flex-col gap-0.5 items-end', children: goalsB.map(e => el('div', { text: `⚽ ${e.minute}'`, className: 'text-[10px] text-live font-medium' })) }),
+            ],
+          }),
+      el('div', {
+        className: 'relative h-3',
+        children: [
+          el('div', { className: 'absolute inset-x-0 top-[5px] h-[1.5px] bg-bg-surface rounded-full' }),
+          el('div', { className: 'absolute left-0 top-[5px] h-[1.5px] bg-text-muted/20 w-full rounded-full' }),
+          ...events.map(e => el('div', {
+            className: `absolute w-1.5 h-1.5 top-1/2 -translate-y-1/2 -translate-x-1 rounded-full ${e.team === 'A' ? 'bg-accent' : 'bg-live'}`,
+            style: { left: pct(e.minute) },
+          })),
         ],
       }),
     ],

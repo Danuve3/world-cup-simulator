@@ -372,6 +372,7 @@ let carouselIndex = 0;
 // Live match UX state — persists across renders to detect score changes
 const prevScores = new Map();    // matchId → { goalsA, goalsB }
 const goalFlashUntil = new Map(); // matchId → timestamp ms
+const expandedRecentMatches = new Set(); // endMin key → expanded
 
 // Timeline RAF — updates cursor + fill at 60fps independently of full re-renders
 let liveTimelineRAF = null;
@@ -571,10 +572,67 @@ function createLiveMatchCard(match) {
     ? `Grupo ${String.fromCharCode(65 + match.group)}`
     : getRoundLabel(match.round) || '';
 
+  // Finished match: compact card, click to expand goal detail
+  if (matchPhase === 'finalizado') {
+    const detailEl = createMatchGoalDetail(events, match.extraTime);
+    detailEl.style.display = 'none';
+    let expanded = false;
+    let toggleEl;
+    return el('div', {
+      className: 'card p-4 cursor-pointer select-none',
+      events: { click: () => {
+        expanded = !expanded;
+        detailEl.style.display = expanded ? 'block' : 'none';
+        toggleEl.textContent = expanded ? '▲' : '▼';
+      }},
+      children: [
+        el('div', {
+          className: 'flex justify-between items-center mb-3',
+          children: [
+            el('span', { text: roundLabel, className: 'text-[11px] text-text-muted font-medium uppercase tracking-wider' }),
+            el('div', {
+              className: 'flex items-center gap-2',
+              children: [
+                el('span', { text: 'Finalizado', className: 'text-xs text-text-secondary font-bold' }),
+                toggleEl = el('span', { text: '▼', className: 'text-[10px] text-text-muted' }),
+              ],
+            }),
+          ],
+        }),
+        el('div', {
+          className: 'flex items-center gap-3',
+          children: [
+            el('div', {
+              className: 'flex-1 min-w-0',
+              children: [el('div', {
+                className: 'flex items-center gap-2',
+                children: [flag(match.teamA?.code, 24), el('span', { text: match.teamA?.name || '?', className: 'text-sm font-medium truncate' })],
+              })],
+            }),
+            el('div', {
+              className: 'flex items-center gap-1.5 shrink-0',
+              children: [
+                el('span', { text: String(goalsA), className: `score-num ${goalsA > goalsB ? 'score-num-winner' : ''}` }),
+                el('span', { text: ':', className: 'text-text-muted text-xs font-bold' }),
+                el('span', { text: String(goalsB), className: `score-num ${goalsB > goalsA ? 'score-num-winner' : ''}` }),
+              ],
+            }),
+            el('div', {
+              className: 'flex-1 min-w-0 text-right',
+              children: [el('div', {
+                className: 'flex items-center gap-2 justify-end',
+                children: [el('span', { text: match.teamB?.name || '?', className: 'text-sm font-medium truncate' }), flag(match.teamB?.code, 24)],
+              })],
+            }),
+          ],
+        }),
+        detailEl,
+      ],
+    });
+  }
+
   const minuteDisplay = matchPhase === 'halftime'
     ? el('span', { text: 'Descanso', className: 'text-xs text-text-secondary font-bold' })
-    : matchPhase === 'finalizado'
-    ? el('span', { text: 'Finalizado', className: 'text-xs text-text-secondary font-bold' })
     : el('span', { text: `${minute}'`, className: 'text-xs text-live font-bold tabular-nums' });
 
   return el('div', {
@@ -639,6 +697,41 @@ function createLiveMatchCard(match) {
         className: 'text-[13px] text-text-secondary italic text-center mt-2 leading-snug',
       }),
     ].filter(Boolean),
+  });
+}
+
+/** Detail panel for finished matches: goal list (left/right) + static timeline */
+function createMatchGoalDetail(events, extraTime) {
+  const maxMinute = extraTime ? 120 : 90;
+  const pct = min => `${Math.min(100, (min / maxMinute) * 100).toFixed(1)}%`;
+  const goalsA = events.filter(e => e.team === 'A');
+  const goalsB = events.filter(e => e.team === 'B');
+
+  return el('div', {
+    className: 'mt-3 pt-3 border-t border-border-subtle',
+    children: [
+      events.length === 0
+        ? el('p', { text: 'Sin goles', className: 'text-[11px] text-text-muted text-center mb-2' })
+        : el('div', {
+            className: 'flex gap-3 mb-2',
+            children: [
+              el('div', { className: 'flex-1 flex flex-col gap-0.5', children: goalsA.map(e => el('div', { text: `⚽ ${e.minute}'`, className: 'text-[11px] text-accent font-medium' })) }),
+              el('div', { className: 'shrink-0 w-12' }),
+              el('div', { className: 'flex-1 flex flex-col gap-0.5 items-end', children: goalsB.map(e => el('div', { text: `⚽ ${e.minute}'`, className: 'text-[11px] text-live font-medium' })) }),
+            ],
+          }),
+      el('div', {
+        className: 'relative h-3',
+        children: [
+          el('div', { className: 'absolute inset-x-0 top-[5px] h-[2px] bg-bg-surface rounded-full' }),
+          el('div', { className: 'absolute left-0 top-[5px] h-[2px] bg-text-muted/20 w-full rounded-full' }),
+          ...events.map(e => el('div', {
+            className: `absolute w-2 h-2 top-1/2 -translate-y-1/2 -translate-x-1 rounded-full ${e.team === 'A' ? 'bg-accent' : 'bg-live'}`,
+            style: { left: pct(e.minute) },
+          })),
+        ],
+      }),
+    ],
   });
 }
 
@@ -994,8 +1087,17 @@ function createRecentMatchCard(m) {
   const aWon = m.goalsA > m.goalsB;
   const bWon = m.goalsB > m.goalsA;
 
+  const key = `${m.teamA?.code}-${m.teamB?.code}`;
+  const detailEl = createMatchGoalDetail(m.events || [], m.extraTime);
+  detailEl.style.display = expandedRecentMatches.has(key) ? 'block' : 'none';
+
   return el('div', {
-    className: 'card p-3',
+    className: 'card p-3 cursor-pointer select-none',
+    events: { click: () => {
+      if (expandedRecentMatches.has(key)) expandedRecentMatches.delete(key);
+      else expandedRecentMatches.add(key);
+      detailEl.style.display = expandedRecentMatches.has(key) ? 'block' : 'none';
+    }},
     children: [
       el('div', {
         className: 'flex items-center gap-2',
@@ -1030,6 +1132,7 @@ function createRecentMatchCard(m) {
           }),
         ],
       }),
+      detailEl,
     ],
   });
 }
