@@ -133,7 +133,7 @@ export function countdownDisplay(ms, opts = {}) {
 
   const children = units.map(u =>
     el('div', {
-      className: `${numClass} flex items-center justify-center bg-bg-card rounded-xl shadow-sm`,
+      className: `${numClass} flex items-center justify-center`,
       children: [
         el('div', {
           className: 'flex items-baseline',

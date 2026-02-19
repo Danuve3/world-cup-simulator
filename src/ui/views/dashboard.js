@@ -2,6 +2,7 @@ import { el, flag, formatMinutes, formatCountdown, countdownDisplay, formatTime,
 import { SCHEDULE } from '../../constants.js';
 import { TEAMS } from '../../engine/teams.js';
 import { getMatchDisplayState } from '../../engine/timeline.js';
+import { getNow } from '../../engine/simulation.js';
 
 /**
  * Dashboard / "En Vivo" view.
@@ -377,7 +378,7 @@ let liveTimelineRAF = null;
 let liveTimelineData = []; // [{ matchId, startMs, durationMs }]
 
 function updateLiveTimelines() {
-  const now = Date.now();
+  const now = getNow();
   for (const d of liveTimelineData) {
     const elapsedMin = Math.max(0, (now - d.startMs) / 60000);
     const { minute } = getMatchDisplayState(elapsedMin);
@@ -630,33 +631,37 @@ function createLiveMatchCard(match) {
       createMatchTimeline(events, minute, maxMinute, matchId),
 
       // Feature 7: Dominio bar
-      createDominioBar(match, goalsA, goalsB),
+      createDominioBar(match, goalsA, goalsB, minute, matchId),
 
       // Feature 4: Dynamic narrative
       el('p', {
-        text: getMatchNarrative(match, minute, goalsA, goalsB, events),
-        className: 'text-[11px] text-text-muted italic text-center mt-2',
+        text: getMatchNarrative(match, minute, goalsA, goalsB, events, matchId),
+        className: 'text-[13px] text-text-secondary italic text-center mt-2 leading-snug',
       }),
     ].filter(Boolean),
   });
 }
 
-/** Feature 1: Chronological goal feed */
+/** Feature 1: Goal feed split by team — local left, visitante right */
 function createGoalFeed(events, match) {
+  const goalsA = events.filter(e => e.team === 'A');
+  const goalsB = events.filter(e => e.team === 'B');
+
+  const goalEntry = (e, side) => {
+    const isA = side === 'A';
+    return el('div', {
+      className: `flex items-center gap-1 text-[11px] font-medium ${isA ? 'text-accent' : 'text-live justify-end'}`,
+      children: [el('span', { text: `⚽ ${e.minute}'` })],
+    });
+  };
+
   return el('div', {
-    className: 'flex flex-wrap gap-x-3 gap-y-1 justify-center mb-3',
-    children: events.map(e => {
-      const isA = e.team === 'A';
-      const team = isA ? match.teamA : match.teamB;
-      const f = flag(team?.code, 14);
-      return el('span', {
-        className: `inline-flex items-center gap-1 text-[11px] font-medium ${isA ? 'text-accent' : 'text-live'}`,
-        children: [
-          el('span', { text: `⚽ ${e.minute}'` }),
-          f,
-        ],
-      });
-    }),
+    className: 'flex gap-3 mb-3',
+    children: [
+      el('div', { className: 'flex-1 flex flex-col gap-0.5', children: goalsA.map(e => goalEntry(e, 'A')) }),
+      el('div', { className: 'shrink-0 w-12' }),
+      el('div', { className: 'flex-1 flex flex-col gap-0.5 items-end', children: goalsB.map(e => goalEntry(e, 'B')) }),
+    ],
   });
 }
 
@@ -665,7 +670,7 @@ function createMatchTimeline(events, currentMinute, maxMinute, matchId) {
   const pct = min => `${Math.min(100, (min / maxMinute) * 100).toFixed(1)}%`;
 
   return el('div', {
-    className: 'mb-3',
+    className: 'mb-3 pt-2',
     children: [
       el('div', {
         className: 'relative h-4',
@@ -705,15 +710,32 @@ function createMatchTimeline(events, currentMinute, maxMinute, matchId) {
   });
 }
 
-/** Feature 7: Possession-style dominio bar based on ratings + goals */
-function createDominioBar(match, goalsA, goalsB) {
+/** Feature 7: Possession-style dominio bar based on ratings + goals + match minute */
+function createDominioBar(match, goalsA, goalsB, minute = 0, matchId = 0) {
   const rA = match.teamA?.rating ?? 75;
   const rB = match.teamB?.rating ?? 75;
   const baseA = rA * rA;
   const baseB = rB * rB;
-  const baseRatio = baseA / (baseA + baseB);
-  const goalShift = (goalsA - goalsB) * 0.08;
-  const domRatio = Math.max(0.15, Math.min(0.85, baseRatio + goalShift));
+  // Natural possession target based on team strength
+  const naturalRatio = baseA / (baseA + baseB);
+
+  // Start at 50-50, converge toward natural ratio over first 25 minutes
+  const convergence = Math.min(1, minute / 25);
+  const baseRatio = 0.5 + (naturalRatio - 0.5) * convergence;
+
+  // Goal shift: losing team presses more — slight counter-effect
+  const goalShift = (goalsA - goalsB) * 0.05;
+
+  // Deterministic oscillations based on matchId seed — multiple freqs for realism
+  const s = (typeof matchId === 'string' ? matchId.split('').reduce((a, c) => a + c.charCodeAt(0), 0) : matchId) || 1;
+  const phase1 = (s * 0.137) % (2 * Math.PI);
+  const phase2 = (s * 0.271) % (2 * Math.PI);
+  const phase3 = (s * 0.419) % (2 * Math.PI);
+  const osc = Math.sin(minute * 0.18 + phase1) * 0.05
+             + Math.sin(minute * 0.09 + phase2) * 0.03
+             + Math.sin(minute * 0.31 + phase3) * 0.02;
+
+  const domRatio = Math.max(0.18, Math.min(0.82, baseRatio + goalShift + osc));
   const pctA = Math.round(domRatio * 100);
   const pctB = 100 - pctA;
   return el('div', {
@@ -732,59 +754,182 @@ function createDominioBar(match, goalsA, goalsB) {
   });
 }
 
-/** Feature 4: Dynamic narrative text */
-function getMatchNarrative(match, minute, goalsA, goalsB, events) {
+/** Feature 4: Dynamic narrative — rotates independently per match, biased by dominance */
+function getMatchNarrative(match, minute, goalsA, goalsB, events, matchId = 0) {
   const diff = goalsA - goalsB;
   const absDiff = Math.abs(diff);
-  const teamAhead = diff > 0 ? match.teamA : diff < 0 ? match.teamB : null;
-  const teamBehind = diff > 0 ? match.teamB : diff < 0 ? match.teamA : null;
+  const A = match.teamA?.name || 'Local';
+  const B = match.teamB?.name || 'Visitante';
+  const teamAhead = diff > 0 ? A : diff < 0 ? B : null;
+  const teamBehind = diff > 0 ? B : diff < 0 ? A : null;
   const lastGoal = events.length > 0 ? events[events.length - 1] : null;
   const recentGoal = lastGoal && (minute - lastGoal.minute) <= 4;
   const isFinalStretch = minute >= 83;
-  const isLate = minute >= 75;
+  const isLate = minute >= 72;
 
+  // --- Fixed states ---
   if (match.matchPhase === 'halftime') {
-    if (goalsA === goalsB) return `Descanso: empatados a ${goalsA}`;
-    return `Descanso: ${teamAhead?.name} gana la primera parte`;
+    if (goalsA === goalsB) return pickN([`Descanso: empatados a ${goalsA}`, `Descanso igualado — segunda parte por disputar`, `Ninguno pudo marcar en la primera parte`], idHash(matchId));
+    return pickN([`Descanso: ${teamAhead} gana la primera parte`, `${teamAhead} se va al descanso con ventaja`, `Primera parte para ${teamAhead} — todo abierto para la segunda`], idHash(matchId));
   }
-
   if (match.matchPhase === 'finalizado') {
     if (goalsA === goalsB) return `Empate a ${goalsA} — partido finalizado`;
-    return `${teamAhead?.name} gana ${Math.max(goalsA, goalsB)}-${Math.min(goalsA, goalsB)}`;
+    return `${teamAhead} gana ${Math.max(goalsA, goalsB)}-${Math.min(goalsA, goalsB)}`;
   }
+  if (minute <= 3) return pickN([
+    `Salen los dos equipos al verde — ¡arranca el partido!`,
+    `El árbitro da el pitido inicial — ¡ya ruedan los primeros minutos!`,
+    `¡Comienza el encuentro entre ${A} y ${B}!`,
+  ], idHash(matchId));
 
-  if (minute <= 3) return 'Partido recién comenzado';
-
+  // --- Gol reciente ---
   if (recentGoal) {
-    const scorer = lastGoal.team === 'A' ? match.teamA : match.teamB;
-    if (goalsA === goalsB) return `¡${scorer?.name} empata el partido!`;
-    if (absDiff >= 2) return `¡Golazo de ${scorer?.name}! Diferencia amplia`;
-    return `¡Gol de ${scorer?.name}!`;
+    const sc = lastGoal.team === 'A' ? A : B;
+    if (goalsA === goalsB) return pickN([`¡${sc} empata el partido!`, `¡Gol del empate! ¡${sc} lo igualó todo!`, `¡No se rinde ${sc} — empate en el marcador!`, `¡Partido igualado de nuevo gracias a ${sc}!`], idHash(matchId));
+    if (absDiff >= 2) return pickN([`¡${sc} amplía la ventaja — el partido se escapa!`, `¡Imparable ${sc} — otro gol!`, `¡${sc} sigue haciendo daño — qué partido!`, `¡Golazo de ${sc}! Diferencia clara en el marcador`], idHash(matchId));
+    return pickN([`¡Gol de ${sc}!`, `¡${sc} adelantado en el marcador!`, `¡${sc} lo consigue — golazo!`, `¡Qué gol! ¡${sc} hace explotar el estadio!`, `¡${sc} marca y el estadio enloquece!`], idHash(matchId));
   }
 
-  if (goalsA === 0 && goalsB === 0) {
-    if (isFinalStretch) return 'Sin goles y el tiempo se acaba';
-    if (isLate) return 'Sin goles — el partido sigue abierto';
-    return 'Partido sin goles de momento';
+  // --- Rotación dinámica — se calcula antes de cualquier branch ---
+  const s = idHash(matchId);
+  const interval = 3 + (s % 3); // 3, 4 o 5 s por partido
+  const sl = Math.floor(getNow() / (interval * 1000) + s * 0.37);
+
+  // --- Goleada clara ---
+  if (absDiff >= 3) return pickN([
+    `${teamAhead} aplasta a su rival — goleada en camino`,
+    `${teamAhead} es superior en todo — partido decidido`,
+    `${teamBehind} no encuentra la forma de frenarlos`,
+    `${teamAhead} hace un recital de fútbol`,
+    `Dominio absoluto de ${teamAhead} — recital`,
+    `${teamBehind} ya no puede hacer nada — partido sentenciado`,
+    `${teamAhead} juega a lo que quiere — espectáculo`,
+  ], sl);
+
+  // Dominancia: quién protagoniza la acción en esta frase
+  // Rating al cuadrado + diferencia de goles + urgencia tardía
+  let dom = matchDominance(match, goalsA, goalsB);
+  if (isLate && diff !== 0) {
+    // El equipo que va perdiendo se vuelca — más presencia atacante
+    dom = diff < 0
+      ? Math.min(0.82, dom + 0.22)  // A remonta → A ataca más
+      : Math.max(0.18, dom - 0.22); // B remonta → B ataca más
   }
 
-  if (goalsA === goalsB) {
-    if (isFinalStretch) return `🔥 Empate — todo por decidir en el descuento`;
-    if (isLate) return `Empate a ${goalsA} — puede pasar cualquier cosa`;
-    return `Igualados a ${goalsA}`;
-  }
+  // threshold de 10: cuántos slots de cada 10 muestran a A atacando
+  const attIsA = (sl % 10) < Math.round(dom * 10);
+  const att = attIsA ? A : B;
+  const def = attIsA ? B : A;
 
-  if (absDiff >= 3) return `${teamAhead?.name} controla el partido`;
+  // Frases de acción generales (usa att/def para que tengan sentido)
+  const action = [
+    `${att} avanza por la banda izquierda — quiere hacer daño`,
+    `${att} avanza por la banda derecha con velocidad`,
+    `Tiro de ${att} entre los tres palos... ¡lo atrapa el portero de ${def}!`,
+    `Falta peligrosa para ${att} al borde del área de ${def}`,
+    `¡Córner para ${att}! El estadio se pone en pie`,
+    `${att} combina en corto y se acerca al área de ${def}`,
+    `Remate de cabeza de ${att} — ¡se va rozando el larguero!`,
+    `${att} presiona en campo contrario — ${def} no puede salir`,
+    `¡Qué jugada de ${att}! La defensa de ${def} sufre`,
+    `Contraataque veloz de ${att} — tres contra dos`,
+    `${att} roba el balón y sale disparado hacia el área`,
+    `Gran pase filtrado de ${att} — el delantero controla`,
+    `¡Disparo potente de ${att}! Sale el balón rozando el palo`,
+    `${att} en el área — ¡la defensa de ${def} lo evita in extremis!`,
+    `${att} pide penalti con insistencia — el árbitro dice que no`,
+    `Centro al área de ${att} — despeja la defensa con apuros`,
+    `Falta táctica de ${def} para cortar el contraataque de ${att}`,
+    `¡Una-dos precioso de ${att} que supera la presión de ${def}!`,
+    `${att} domina la posesión y mueve el balón con pausa`,
+    `Gran parada del portero de ${def} — evita el gol de ${att}`,
+    `¡Remate al larguero de ${att}! ¡Qué cerca estuvo!`,
+    `El portero de ${def} está haciendo un partidazo`,
+    `${att} reclama penalti con insistencia`,
+    `${att} controla el tempo — ${def} no puede robar el balón`,
+    `¡Qué centro de ${att}! El delantero no llega por poco`,
+    `${att} combina con precisión — la defensa de ${def} retrocede`,
+    `${att} no da tregua — otra vez en campo contrario`,
+    `${def} salva el balón sobre la línea — ¡salvada milagrosa!`,
+    `Tiro libre peligroso para ${att} — la barrera de ${def} se prepara`,
+    `${att} gana todos los duelos aéreos — domina el juego aéreo`,
+    `¡Tremendo fallo de ${def}! ${att} estuvo a punto de aprovechar`,
+    `${att} aprieta — ${def} se defiende con todos atrás`,
+    `Llegada peligrosa de ${att} por el centro — el portero despeja`,
+    `${att} gana la banda y centra al área — pelea por el balón`,
+    `El capitán de ${att} organiza el juego desde el centro`,
+    `${def} cierra todos los espacios — ${att} busca el hueco`,
+    `${att} lleva el ritmo del partido — ${def} corre detrás`,
+    `Disparo cruzado de ${att} — sale rozando el palo derecho`,
+    `${att} busca el desmarque en profundidad — la línea de ${def} sube`,
+    `¡Jugadón de ${att}! Tres jugadores superados antes del remate`,
+    `${att} insiste por el interior — ${def} concede otra falta`,
+    `Saque de banda en campo de ${def} — continúa la presión de ${att}`,
+    `${att} acumula córners — la presión es constante`,
+    `El portero de ${def} sale con los puños y despeja el peligro`,
+    `${att} mete el balón al espacio — el defensa despeja`,
+    `¡Asistencia de lujo de ${att}! El delantero no llega por centímetros`,
+  ];
 
-  if (isFinalStretch && absDiff === 1) {
-    return `⏱ ${teamAhead?.name} aguanta — ${teamBehind?.name} lo busca`;
-  }
-  if (isLate && absDiff === 1) return `${teamBehind?.name} busca el empate`;
+  // Frases neutras (cada 7 slots)
+  const neutral = [
+    'El árbitro detiene el juego — jugador en el suelo',
+    'El VAR está revisando la jugada...',
+    'Sustitución en el campo — entra sangre nueva',
+    'Tarjeta amarilla — protesta en el campo',
+    'Gran ambiente en las gradas — el estadio empuja',
+    'Fuerte entrada — el árbitro llama al orden',
+    'Los banquillos debaten la táctica — van a cambiar algo',
+    'Tiempo muerto médico — hay un jugador en el suelo',
+  ];
 
-  return absDiff >= 2
-    ? `${teamAhead?.name} con ventaja clara`
-    : `${teamAhead?.name} por delante`;
+  // Frases de situación tardía (se añaden al pool cuando procede)
+  const situation = [];
+  if (isFinalStretch && absDiff === 1) situation.push(
+    `${teamBehind} lo intenta todo — el descuento puede ser clave`,
+    `${teamAhead} defiende su ventaja con uñas y dientes`,
+    `Llueven los centros al área de ${teamAhead}`,
+    `El banquillo de ${teamBehind} está de pie`,
+    `${teamAhead} aguanta — ${teamBehind} lo busca desesperado`,
+    `¡Qué tensión! Los últimos minutos son de infarto`,
+    `${teamBehind} lo necesita ya — el reloj es su enemigo`,
+    `${teamAhead} pierde el tiempo como puede — ${teamBehind} protesta`,
+  );
+  if (isLate && absDiff === 1 && !isFinalStretch) situation.push(
+    `${teamBehind} se vuelca al ataque — necesita el gol`,
+    `${teamAhead} intenta salir a la contra`,
+    `${teamBehind} acumula jugadores arriba`,
+    `El reloj empieza a ser aliado de ${teamAhead}`,
+    `Balón parado para ${teamBehind} — oportunidad peligrosa`,
+  );
+  if (goalsA === 0 && goalsB === 0) situation.push(
+    `${att} no logra romper el bloqueo defensivo de ${def}`,
+    `El primer gol puede ser definitivo en este partido`,
+    `Ninguno quiere cometer el error que abra el marcador`,
+    isFinalStretch ? `Los minutos pasan... ¿habrá gol?` : `Partido sin goles pero con ocasiones`,
+  );
+  if (absDiff >= 2 && absDiff < 3) situation.push(
+    `${teamBehind} necesita reaccionar urgentemente`,
+    `${teamAhead} maneja los tiempos con maestría`,
+    `${teamAhead} con ventaja clara — administra sin prisa`,
+    `${teamBehind} lo intenta pero ${teamAhead} controla`,
+  );
+
+  const pool = [...action, ...situation, ...(sl % 7 === 0 ? neutral : [])];
+  return pool[((sl * 3 + s) % pool.length + pool.length) % pool.length];
 }
+
+function matchDominance(match, goalsA, goalsB) {
+  const rA = match.teamA?.rating ?? 75;
+  const rB = match.teamB?.rating ?? 75;
+  const natural = (rA * rA) / (rA * rA + rB * rB);
+  return Math.max(0.15, Math.min(0.85, natural + (goalsA - goalsB) * 0.06));
+}
+function idHash(matchId) {
+  if (typeof matchId === 'string') return matchId.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  return Number(matchId) || 1;
+}
+function pickN(arr, slot) { return arr[((slot % arr.length) + arr.length) % arr.length]; }
 
 function createUpcomingCard(match, state) {
   const nextMatchStartMs = state.cycleStart + match.startMin * 60 * 1000;
