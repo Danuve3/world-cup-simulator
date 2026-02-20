@@ -154,7 +154,7 @@ export function renderStats(container, state) {
   }
 
   if (stats.biggestWins.length > 0) {
-    container.appendChild(createMatchList('Mayores goleadas', stats.biggestWins.slice(0, 10)));
+    container.appendChild(createMatchList('Mayores goleadas', stats.biggestWins.slice(0, 3)));
   }
 
   if (stats.highestScoring && stats.highestScoring.length > 0) {
@@ -164,7 +164,7 @@ export function renderStats(container, state) {
   // All-time top scorers (top 5, expandable to 50)
   if (stats.goalscorersRanking && stats.goalscorersRanking.length > 0) {
     container.appendChild(
-      el('p', { text: 'Goleadores históricos', className: 'section-title mt-2' })
+      el('p', { text: 'Goleadores históricos', className: 'section-title mt-6' })
     );
     container.appendChild(createAllTimeScorers(stats.goalscorersRanking));
   }
@@ -642,9 +642,9 @@ function createAllTimeScorers(allEntries) {
       className: 'flex items-center gap-1 px-4 py-2 list-row',
       children: [
         el('span', { text: `${i + 1}`, className: `w-6 shrink-0 text-[10px] tabular-nums ${i < 3 ? 'text-accent font-bold' : 'text-text-muted'}` }),
-        flag(entry.player.teamCode, 18),
+        flag(entry.player.teamCode, 32),
         el('div', {
-          className: 'flex-1 min-w-0',
+          className: 'flex-1 min-w-0 ml-1',
           children: [
             el('div', { text: entry.player.name, className: 'text-xs font-medium truncate' }),
             el('div', {
@@ -696,10 +696,7 @@ function createAllTimeScorers(allEntries) {
         ].filter(Boolean),
       }),
       rowsContainer,
-      hasMore ? el('div', {
-        className: 'px-4 py-2 text-center text-[10px] text-text-muted border-t border-border-subtle',
-        text: expanded ? `Mostrando top ${MAX}` : `Mostrando top ${VISIBLE} de ${allEntries.length} — pulsa para ver top ${MAX}`,
-      }) : null,
+      null,
     ].filter(Boolean),
   });
 }

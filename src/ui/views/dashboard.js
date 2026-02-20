@@ -3,6 +3,7 @@ import { SCHEDULE } from '../../constants.js';
 import { TEAMS } from '../../engine/teams.js';
 import { getMatchDisplayState } from '../../engine/timeline.js';
 import { getNow } from '../../engine/simulation.js';
+import { getSquadForEdition } from '../../engine/playerEvolution.js';
 
 /**
  * Dashboard / "En Vivo" view.
@@ -336,7 +337,7 @@ function renderLivePhase(state) {
           }),
           el('div', {
             className: 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3',
-            children: liveMatches.map(m => createLiveMatchCard(m)),
+            children: liveMatches.map(m => createLiveMatchCard(m, state.edition)),
           }),
         ],
       })
@@ -363,6 +364,9 @@ function renderLivePhase(state) {
   if (state.recentMatches && state.recentMatches.length > 0) {
     children.push(createRecentMatchesSection(state.recentMatches));
   }
+
+  const topScorers = createTopScorersWidget(state.liveEditionGoals);
+  if (topScorers) children.push(topScorers);
 
   return el('div', { children });
 }
@@ -551,7 +555,19 @@ function getRoundLabel(round) {
   return labels[round] || round;
 }
 
-function createLiveMatchCard(match) {
+/** Extract top-player surnames for use in match narratives */
+function getKeyPlayerNames(teamCode, edition) {
+  if (!teamCode || edition === undefined) return [];
+  const squad = getSquadForEdition(teamCode, edition);
+  const fws = squad.filter(p => p.position === 'FW').sort((a, b) => b.rating - a.rating).slice(0, 3);
+  const mfs = squad.filter(p => p.position === 'MF').sort((a, b) => b.rating - a.rating).slice(0, 2);
+  return [...fws, ...mfs].map(p => {
+    const parts = p.name.trim().split(' ');
+    return parts[parts.length - 1];
+  });
+}
+
+function createLiveMatchCard(match, edition) {
   const matchId = match.matchId;
   const minute = match.matchMinute || match.currentMinute || 0;
   const matchPhase = match.matchPhase || 'playing';
@@ -559,6 +575,10 @@ function createLiveMatchCard(match) {
   const goalsA = match.goalsA ?? 0;
   const goalsB = match.goalsB ?? 0;
   const maxMinute = match.extraTime ? 120 : 90;
+
+  // Key player surnames for narrative use (top FW + MF by rating)
+  const playersA = getKeyPlayerNames(match.teamA?.code, edition);
+  const playersB = getKeyPlayerNames(match.teamB?.code, edition);
 
   // Detect score change → trigger flash (only during playing, not at halftime/end)
   const prev = prevScores.get(matchId);
@@ -693,7 +713,7 @@ function createLiveMatchCard(match) {
 
       // Feature 4: Dynamic narrative
       el('p', {
-        text: getMatchNarrative(match, minute, goalsA, goalsB, events, matchId),
+        text: getMatchNarrative(match, minute, goalsA, goalsB, events, matchId, playersA, playersB),
         className: 'text-[13px] text-text-secondary italic text-center mt-2 leading-snug',
       }),
     ].filter(Boolean),
@@ -849,7 +869,7 @@ function createDominioBar(match, goalsA, goalsB, minute = 0, matchId = 0) {
 }
 
 /** Feature 4: Dynamic narrative — rotates independently per match, biased by dominance */
-function getMatchNarrative(match, minute, goalsA, goalsB, events, matchId = 0) {
+function getMatchNarrative(match, minute, goalsA, goalsB, events, matchId = 0, playersA = [], playersB = []) {
   const diff = goalsA - goalsB;
   const absDiff = Math.abs(diff);
   const A = match.teamA?.name || 'Local';
@@ -879,9 +899,10 @@ function getMatchNarrative(match, minute, goalsA, goalsB, events, matchId = 0) {
   // --- Gol reciente ---
   if (recentGoal) {
     const sc = lastGoal.team === 'A' ? A : B;
-    if (goalsA === goalsB) return pickN([`¡${sc} empata el partido!`, `¡Gol del empate! ¡${sc} lo igualó todo!`, `¡No se rinde ${sc} — empate en el marcador!`, `¡Partido igualado de nuevo gracias a ${sc}!`], idHash(matchId));
-    if (absDiff >= 2) return pickN([`¡${sc} amplía la ventaja — el partido se escapa!`, `¡Imparable ${sc} — otro gol!`, `¡${sc} sigue haciendo daño — qué partido!`, `¡Golazo de ${sc}! Diferencia clara en el marcador`], idHash(matchId));
-    return pickN([`¡Gol de ${sc}!`, `¡${sc} adelantado en el marcador!`, `¡${sc} lo consigue — golazo!`, `¡Qué gol! ¡${sc} hace explotar el estadio!`, `¡${sc} marca y el estadio enloquece!`], idHash(matchId));
+    const scorer = lastGoal.scorerName || sc; // nombre real del goleador si está disponible
+    if (goalsA === goalsB) return pickN([`¡${scorer} empata el partido!`, `¡Gol del empate! ¡${scorer} lo igualó todo!`, `¡No se rinde ${sc} — ${scorer} empata!`, `¡${scorer} devuelve la igualdad al marcador!`], idHash(matchId));
+    if (absDiff >= 2) return pickN([`¡${sc} amplía la ventaja — el partido se escapa!`, `¡Imparable ${scorer} — doblete!`, `¡${scorer} sigue haciendo daño — qué partido!`, `¡Golazo de ${scorer}! Diferencia clara en el marcador`], idHash(matchId));
+    return pickN([`¡Gol de ${scorer}!`, `¡${scorer} adelanta a ${sc}!`, `¡${scorer} lo consigue — golazo!`, `¡Qué gol de ${scorer}! El estadio explota`, `¡${scorer} marca y ${sc} enloquece!`], idHash(matchId));
   }
 
   // --- Rotación dinámica — se calcula antes de cualquier branch ---
@@ -915,54 +936,66 @@ function getMatchNarrative(match, minute, goalsA, goalsB, events, matchId = 0) {
   const att = attIsA ? A : B;
   const def = attIsA ? B : A;
 
-  // Frases de acción generales (usa att/def para que tengan sentido)
+  // Player name helpers — pick from attacking/defending squad by slot
+  const pArr = attIsA ? playersA : playersB;
+  const dArr = attIsA ? playersB : playersA;
+  function pn(arr, offset = 0) {
+    if (!arr.length) return null;
+    return arr[Math.abs(sl + offset) % arr.length];
+  }
+  // Shortcuts: n1/n2 = two attackers, nd = a defender surname (used for def team)
+  const n1 = pn(pArr, 0) || att;
+  const n2 = pn(pArr, 3) || att;
+  const nd = pn(dArr, 1) || def;
+
+  // Frases de acción generales — mezcla de nombres de jugadores y equipos
   const action = [
-    `${att} avanza por la banda izquierda — quiere hacer daño`,
+    `${n1} avanza por la banda izquierda — quiere hacer daño`,
     `${att} avanza por la banda derecha con velocidad`,
-    `Tiro de ${att} entre los tres palos... ¡lo atrapa el portero de ${def}!`,
+    `Tiro de ${n1} entre los tres palos... ¡lo atrapa el portero de ${def}!`,
     `Falta peligrosa para ${att} al borde del área de ${def}`,
     `¡Córner para ${att}! El estadio se pone en pie`,
-    `${att} combina en corto y se acerca al área de ${def}`,
-    `Remate de cabeza de ${att} — ¡se va rozando el larguero!`,
+    `${n1} combina con ${n2} y se acerca al área de ${def}`,
+    `Remate de cabeza de ${n1} — ¡se va rozando el larguero!`,
     `${att} presiona en campo contrario — ${def} no puede salir`,
-    `¡Qué jugada de ${att}! La defensa de ${def} sufre`,
+    `¡Qué jugada de ${n1}! La defensa de ${def} sufre`,
     `Contraataque veloz de ${att} — tres contra dos`,
-    `${att} roba el balón y sale disparado hacia el área`,
-    `Gran pase filtrado de ${att} — el delantero controla`,
-    `¡Disparo potente de ${att}! Sale el balón rozando el palo`,
-    `${att} en el área — ¡la defensa de ${def} lo evita in extremis!`,
+    `${n1} roba el balón y sale disparado hacia el área`,
+    `Gran pase filtrado de ${n2} para ${n1} — el delantero controla`,
+    `¡Disparo potente de ${n1}! Sale el balón rozando el palo`,
+    `${n1} en el área — ¡${nd} lo evita in extremis!`,
     `${att} pide penalti con insistencia — el árbitro dice que no`,
     `Centro al área de ${att} — despeja la defensa con apuros`,
-    `Falta táctica de ${def} para cortar el contraataque de ${att}`,
-    `¡Una-dos precioso de ${att} que supera la presión de ${def}!`,
+    `Falta táctica de ${def} para cortar el contraataque de ${n1}`,
+    `¡Una-dos precioso de ${n1} que supera la presión de ${def}!`,
     `${att} domina la posesión y mueve el balón con pausa`,
-    `Gran parada del portero de ${def} — evita el gol de ${att}`,
-    `¡Remate al larguero de ${att}! ¡Qué cerca estuvo!`,
-    `El portero de ${def} está haciendo un partidazo`,
-    `${att} reclama penalti con insistencia`,
+    `Gran parada del portero de ${def} — evita el gol de ${n1}`,
+    `¡Remate al larguero de ${n1}! ¡Qué cerca estuvo!`,
+    `El portero de ${def} está haciendo un partidazo — para todo`,
+    `${n1} reclama penalti con insistencia`,
     `${att} controla el tempo — ${def} no puede robar el balón`,
-    `¡Qué centro de ${att}! El delantero no llega por poco`,
-    `${att} combina con precisión — la defensa de ${def} retrocede`,
+    `¡Qué centro de ${n2}! ${n1} no llega por poco`,
+    `${n1} combina con precisión — la defensa de ${def} retrocede`,
     `${att} no da tregua — otra vez en campo contrario`,
-    `${def} salva el balón sobre la línea — ¡salvada milagrosa!`,
-    `Tiro libre peligroso para ${att} — la barrera de ${def} se prepara`,
-    `${att} gana todos los duelos aéreos — domina el juego aéreo`,
-    `¡Tremendo fallo de ${def}! ${att} estuvo a punto de aprovechar`,
+    `${nd} salva el balón sobre la línea — ¡salvada milagrosa!`,
+    `Tiro libre peligroso para ${n1} — la barrera de ${def} se prepara`,
+    `${att} gana todos los duelos aéreos`,
+    `¡Tremendo fallo de ${nd}! ${n1} estuvo a punto de aprovechar`,
     `${att} aprieta — ${def} se defiende con todos atrás`,
-    `Llegada peligrosa de ${att} por el centro — el portero despeja`,
-    `${att} gana la banda y centra al área — pelea por el balón`,
-    `El capitán de ${att} organiza el juego desde el centro`,
-    `${def} cierra todos los espacios — ${att} busca el hueco`,
-    `${att} lleva el ritmo del partido — ${def} corre detrás`,
-    `Disparo cruzado de ${att} — sale rozando el palo derecho`,
-    `${att} busca el desmarque en profundidad — la línea de ${def} sube`,
-    `¡Jugadón de ${att}! Tres jugadores superados antes del remate`,
-    `${att} insiste por el interior — ${def} concede otra falta`,
+    `Llegada peligrosa de ${n1} por el centro — el portero despeja`,
+    `${n1} gana la banda y centra al área — pelea por el balón`,
+    `${n2} organiza el juego desde el centro — ${def} corre detrás`,
+    `${def} cierra todos los espacios — ${n1} busca el hueco`,
+    `${n1} lleva el ritmo del partido — ${def} corre detrás`,
+    `Disparo cruzado de ${n1} — sale rozando el palo derecho`,
+    `${n1} busca el desmarque en profundidad — la línea de ${def} sube`,
+    `¡Jugadón de ${n1}! Tres jugadores superados antes del remate`,
+    `${n1} insiste por el interior — ${def} concede otra falta`,
     `Saque de banda en campo de ${def} — continúa la presión de ${att}`,
     `${att} acumula córners — la presión es constante`,
     `El portero de ${def} sale con los puños y despeja el peligro`,
-    `${att} mete el balón al espacio — el defensa despeja`,
-    `¡Asistencia de lujo de ${att}! El delantero no llega por centímetros`,
+    `${n2} mete el balón al espacio — ${n1} intenta conectar`,
+    `¡Asistencia de lujo de ${n2}! ${n1} no llega por centímetros`,
   ];
 
   // Frases neutras (cada 7 slots)
@@ -1064,6 +1097,56 @@ function createUpcomingCard(match, state) {
             className: 'text-[11px] text-text-muted tabular-nums',
           }),
         ],
+      }),
+    ],
+  });
+}
+
+/* ── Top Scorers widget ── */
+
+function createTopScorersWidget(liveEditionGoals) {
+  if (!liveEditionGoals) return null;
+
+  const top5 = Object.values(liveEditionGoals)
+    .filter(e => e.goals > 0)
+    .sort((a, b) => b.goals - a.goals || b.player.rating - a.player.rating)
+    .slice(0, 5);
+
+  if (top5.length === 0) return null;
+
+  const medalColors = ['text-gold', 'text-text-secondary', 'text-amber-600'];
+
+  return el('div', {
+    className: 'mt-6',
+    children: [
+      el('p', { text: 'Máximos Goleadores', className: 'section-title' }),
+      el('div', {
+        className: 'card overflow-hidden',
+        children: top5.map((entry, i) => {
+          const { player, goals } = entry;
+          const rankColor = medalColors[i] || 'text-text-muted';
+          return el('div', {
+            className: `flex items-center gap-3 px-4 py-2.5${i < top5.length - 1 ? ' border-b border-border-subtle' : ''}`,
+            children: [
+              el('span', {
+                text: String(i + 1),
+                className: `w-4 text-xs font-bold tabular-nums shrink-0 ${rankColor}`,
+              }),
+              flag(player.teamCode, 20),
+              el('span', { text: player.name, className: 'flex-1 min-w-0 text-sm truncate' }),
+              el('div', {
+                className: 'flex items-baseline gap-1 shrink-0',
+                children: [
+                  el('span', {
+                    text: String(goals),
+                    className: `text-sm font-bold tabular-nums ${i === 0 ? 'text-gold' : 'text-text-primary'}`,
+                  }),
+                  el('span', { text: goals === 1 ? 'gol' : 'goles', className: 'text-[11px] text-text-muted' }),
+                ],
+              }),
+            ],
+          });
+        }),
       }),
     ],
   });

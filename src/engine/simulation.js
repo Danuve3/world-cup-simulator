@@ -125,6 +125,10 @@ export function getCurrentState(timestamp) {
   // Recent matches
   const recentMatches = getRecentMatches(edition, tournament, cycleMinute, 4);
 
+  // Per-player goals from played matches only (completed + currently live).
+  // Used by dashboard top-scorers widget so it never shows future match data.
+  const liveEditionGoals = computeEditionGoals(tournament, liveMatches, cycleMinute);
+
   return {
     edition,
     cycleMinute,
@@ -138,7 +142,59 @@ export function getCurrentState(timestamp) {
     minutesToNext,
     nextHost,
     timestamp: timestamp ?? getNow(),
+    liveEditionGoals,
   };
+}
+
+/**
+ * Compute per-player goal counts from completed + live matches only.
+ * @param {object} tournament
+ * @param {Array} liveMatches - current live match states (partial events)
+ * @param {number} cycleMinute
+ * @returns {Object} playerId → { player, goals }
+ */
+function computeEditionGoals(tournament, liveMatches, cycleMinute) {
+  const playerGoals = {};
+
+  function addGoals(m) {
+    if (!m.events) return;
+    for (const e of m.events) {
+      if (e.type === 'goal' && e.scorerId) {
+        const entry = tournament.playerStats?.[e.scorerId];
+        if (!entry) continue;
+        if (!playerGoals[e.scorerId]) playerGoals[e.scorerId] = { player: entry.player, goals: 0 };
+        playerGoals[e.scorerId].goals++;
+      }
+    }
+  }
+
+  // Completed group stage matches
+  for (const m of tournament.groupStage.matches) {
+    const timing = getGroupMatchTiming(m.matchday, m.group, m.matchIndex);
+    if (timing.endMin <= cycleMinute) addGoals(m);
+  }
+
+  // Completed knockout matches
+  const koRounds = [
+    { round: 'R16', matches: tournament.knockout.r16 },
+    { round: 'QF', matches: tournament.knockout.qf },
+    { round: 'SF', matches: tournament.knockout.sf },
+    { round: 'THIRD', matches: [tournament.knockout.thirdPlace] },
+    { round: 'FINAL', matches: [tournament.knockout.final] },
+  ];
+  for (const { round, matches } of koRounds) {
+    matches.forEach((m, i) => {
+      const timing = getKnockoutMatchTiming(round, i);
+      if (timing.endMin <= cycleMinute) addGoals(m);
+    });
+  }
+
+  // Currently live matches (partial events up to current minute)
+  for (const m of liveMatches) {
+    if (m.teamA && m.teamB) addGoals(m);
+  }
+
+  return playerGoals;
 }
 
 /**
@@ -352,6 +408,7 @@ export function getStats(timestamp) {
   }
 
   // Build sorted lists
+
   const goalscorersRanking = Object.values(allTimeGoalscorers)
     .sort((a, b) => b.totalGoals - a.totalGoals);
 
@@ -375,6 +432,7 @@ export function getStats(timestamp) {
     topSingleEditionScorers,
     mostGoalsInMatch,
     mostEditionsPlayer,
+    allTimeEditions,
     totalGoals,
     maxGoalsTournament,
     minGoalsTournament: minGoalsTournament.edition >= 0 ? minGoalsTournament : null,
@@ -582,8 +640,168 @@ export function getLiveStats(timestamp) {
     .sort((a, b) => Math.abs(b.goalsA - b.goalsB) - Math.abs(a.goalsA - a.goalsB))
     .slice(0, 20);
 
+  // Matches already played in current tournament (completed + currently live).
+  // Used for stats that must reflect only what has actually happened.
+  const playedMatches = [...completedMatchesForRanking, ...liveMatchesForRanking];
+
+  // All pre-simulated matches (used only for whole-tournament record cards).
+  const allCurrentMatches = [
+    ...tournament.groupStage.matches,
+    ...tournament.knockout.r16,
+    ...tournament.knockout.qf,
+    ...tournament.knockout.sf,
+    tournament.knockout.thirdPlace,
+    tournament.knockout.final,
+  ];
+
+  // Per-player goals from played matches only
+  const currentEditionPlayerGoals = {}; // playerId → { player, goals }
+  for (const m of playedMatches) {
+    if (!m.events) continue;
+    for (const e of m.events) {
+      if (e.type === 'goal' && e.scorerId) {
+        const playerEntry = tournament.playerStats?.[e.scorerId];
+        if (!playerEntry) continue;
+        if (!currentEditionPlayerGoals[e.scorerId]) {
+          currentEditionPlayerGoals[e.scorerId] = { player: playerEntry.player, goals: 0 };
+        }
+        currentEditionPlayerGoals[e.scorerId].goals++;
+      }
+    }
+  }
+
+  // maxGoalsTournament / minGoalsTournament — use pre-simulated total (whole-tournament record)
+  let liveMaxGoals = { ...baseStats.maxGoalsTournament };
+  let liveMinGoals = baseStats.minGoalsTournament ? { ...baseStats.minGoalsTournament } : null;
+  if (tournament.totalGoals > liveMaxGoals.goals) {
+    liveMaxGoals = { edition, goals: tournament.totalGoals, host: tournament.host };
+  }
+  if (!liveMinGoals || tournament.totalGoals < liveMinGoals.goals) {
+    liveMinGoals = { edition, goals: tournament.totalGoals, host: tournament.host };
+  }
+
+  // mostGoalsTeam / fewestGoalsTeam — use pre-simulated total (whole-tournament record)
+  const currentTeamGoals = {};
+  for (const m of allCurrentMatches) {
+    currentTeamGoals[m.teamA.code] = (currentTeamGoals[m.teamA.code] || 0) + m.goalsA;
+    currentTeamGoals[m.teamB.code] = (currentTeamGoals[m.teamB.code] || 0) + m.goalsB;
+  }
+  let liveMostGoalsTeam = baseStats.mostGoalsTeam ? { ...baseStats.mostGoalsTeam } : null;
+  let liveFewestGoalsTeam = baseStats.fewestGoalsTeam ? { ...baseStats.fewestGoalsTeam } : null;
+  const flatTeams = tournament.draw.groups.flat();
+  for (const [code, goals] of Object.entries(currentTeamGoals)) {
+    const team = flatTeams.find(t => t.code === code);
+    if (!team) continue;
+    if (!liveMostGoalsTeam || goals > liveMostGoalsTeam.goals) {
+      liveMostGoalsTeam = { edition, team, goals };
+    }
+    if (!liveFewestGoalsTeam || goals < liveFewestGoalsTeam.goals) {
+      liveFewestGoalsTeam = { edition, team, goals };
+    }
+  }
+
+  // mostGoalsInMatch — only played matches
+  let liveMostGoalsInMatch = baseStats.mostGoalsInMatch ? { ...baseStats.mostGoalsInMatch } : null;
+  for (const m of playedMatches) {
+    if (!m.events) continue;
+    const perPlayer = {};
+    for (const e of m.events) {
+      if (e.type === 'goal' && e.scorerId) {
+        perPlayer[e.scorerId] = (perPlayer[e.scorerId] || 0) + 1;
+      }
+    }
+    for (const [pid, goals] of Object.entries(perPlayer)) {
+      if (!liveMostGoalsInMatch || goals > liveMostGoalsInMatch.goals) {
+        const entry = tournament.playerStats?.[pid];
+        if (entry) {
+          liveMostGoalsInMatch = { player: entry.player, goals, match: m, edition };
+        }
+      }
+    }
+  }
+
+  // mostEditionsPlayer — historical + current tournament (using pre-simulated mins to detect participation)
+  const mergedAllTimeEditions = {};
+  for (const [pid, entry] of Object.entries(baseStats.allTimeEditions || {})) {
+    mergedAllTimeEditions[pid] = { player: entry.player, count: entry.count };
+  }
+  for (const entry of Object.values(tournament.playerStats || {})) {
+    if (entry.mins > 0) {
+      const pid = entry.player.id;
+      if (mergedAllTimeEditions[pid]) {
+        mergedAllTimeEditions[pid] = { ...mergedAllTimeEditions[pid], count: mergedAllTimeEditions[pid].count + 1 };
+      } else {
+        mergedAllTimeEditions[pid] = { player: entry.player, count: 1 };
+      }
+    }
+  }
+  const liveMostEditionsPlayer = Object.values(mergedAllTimeEditions)
+    .sort((a, b) => b.count - a.count)[0] ?? null;
+
+  // highestScoring — only played matches
+  const currentHighestScoring = playedMatches
+    .filter(m => (m.goalsA + m.goalsB) >= 5)
+    .map(m => ({ edition, matchId: m.matchId, teamA: m.teamA, teamB: m.teamB, goalsA: m.goalsA, goalsB: m.goalsB, events: m.events, extraTime: m.extraTime }));
+  const liveHighestScoring = [...baseStats.highestScoring, ...currentHighestScoring]
+    .sort((a, b) => (b.goalsA + b.goalsB) - (a.goalsA + a.goalsB))
+    .slice(0, 20);
+
+  // titles — add current tournament champion
+  const liveTitles = { ...baseStats.titles };
+  if (tournament.champion) {
+    liveTitles[tournament.champion.code] = (liveTitles[tournament.champion.code] || 0) + 1;
+  }
+
+  // Goalscorers ranking — only goals from played matches
+  const mergedGoalscorers = {};
+  for (const entry of baseStats.goalscorersRanking) {
+    mergedGoalscorers[entry.player.id] = { player: entry.player, totalGoals: entry.totalGoals, editions: [...entry.editions] };
+  }
+  for (const [pid, entry] of Object.entries(currentEditionPlayerGoals)) {
+    if (mergedGoalscorers[pid]) {
+      mergedGoalscorers[pid].totalGoals += entry.goals;
+      mergedGoalscorers[pid].editions.push({ edition, goals: entry.goals });
+    } else {
+      mergedGoalscorers[pid] = { player: entry.player, totalGoals: entry.goals, editions: [{ edition, goals: entry.goals }] };
+    }
+  }
+  const liveGoalscorersRanking = Object.values(mergedGoalscorers)
+    .sort((a, b) => b.totalGoals - a.totalGoals);
+
+  // Merge current edition top scorer into topSingleEditionScorers — from played matches only
+  const liveTopSingleEditionScorers = [...(baseStats.topSingleEditionScorers || [])];
+  const currentTopScorer = Object.values(currentEditionPlayerGoals)
+    .sort((a, b) => b.goals - a.goals || b.player.rating - a.player.rating)[0] ?? null;
+  if (currentTopScorer) {
+    liveTopSingleEditionScorers.push({
+      edition,
+      host: tournament.host,
+      player: currentTopScorer.player,
+      goals: currentTopScorer.goals,
+    });
+    liveTopSingleEditionScorers.sort((a, b) => b.goals - a.goals);
+  }
+
+  // Merge current tournament MVP into mvpRanking
+  const mergedMvps = {};
+  for (const entry of baseStats.mvpRanking) {
+    mergedMvps[entry.player.id] = { player: entry.player, count: entry.count, editions: [...entry.editions] };
+  }
+  if (tournament.mvp) {
+    const pid = tournament.mvp.player.id;
+    if (mergedMvps[pid]) {
+      mergedMvps[pid].count++;
+      mergedMvps[pid].editions.push(edition);
+    } else {
+      mergedMvps[pid] = { player: tournament.mvp.player, count: 1, editions: [edition] };
+    }
+  }
+  const liveMvpRanking = Object.values(mergedMvps)
+    .sort((a, b) => b.count - a.count);
+
   return {
     ...baseStats,
+    titles: liveTitles,
     participations: mergedParticipations,
     totalGoals: baseStats.totalGoals + currentGoals,
     totalMatches: baseStats.totalMatches + currentMatchCount,
@@ -591,10 +809,20 @@ export function getLiveStats(timestamp) {
     currentTournamentGoals: currentGoals,
     currentTournamentMatches: currentMatchCount,
     biggestWins: allBiggestWins,
+    highestScoring: liveHighestScoring,
+    maxGoalsTournament: liveMaxGoals,
+    minGoalsTournament: liveMinGoals,
+    mostGoalsTeam: liveMostGoalsTeam,
+    fewestGoalsTeam: liveFewestGoalsTeam,
+    mostGoalsInMatch: liveMostGoalsInMatch,
+    mostEditionsPlayer: liveMostEditionsPlayer,
     hasLiveData: currentMatchCount > 0 || liveMatchesWithScores.length > 0,
     allTimeRanking: liveAllTimeRanking,
     liveTeamCodes,
     rankingDeltas,
+    goalscorersRanking: liveGoalscorersRanking,
+    topSingleEditionScorers: liveTopSingleEditionScorers,
+    mvpRanking: liveMvpRanking,
   };
 }
 
