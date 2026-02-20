@@ -58,6 +58,9 @@ export function renderStats(container, state) {
   );
 
   // Records
+  const topEditionScorer = stats.topSingleEditionScorers?.[0] ?? null;
+  const topMvp = stats.mvpRanking?.[0] ?? null;
+
   const records = [
     stats.maxGoalsTournament.edition >= 0 ? createRecordCard(
       'Mundial con más goles',
@@ -74,7 +77,7 @@ export function renderStats(container, state) {
     stats.mostGoalsTeam ? (() => {
       const host = simulateTournament(stats.mostGoalsTeam.edition).host;
       return createRecordCard(
-        'Más goles en un mundial',
+        'Más goles de un equipo',
         String(stats.mostGoalsTeam.goals),
         stats.mostGoalsTeam.team.code,
         stats.mostGoalsTeam.team.name,
@@ -84,19 +87,32 @@ export function renderStats(container, state) {
     stats.fewestGoalsTeam ? (() => {
       const host = simulateTournament(stats.fewestGoalsTeam.edition).host;
       return createRecordCard(
-        'Menos goles en un mundial',
+        'Menos goles de un equipo',
         String(stats.fewestGoalsTeam.goals),
         stats.fewestGoalsTeam.team.code,
         stats.fewestGoalsTeam.team.name,
         `${host.name} ${getEditionYear(stats.fewestGoalsTeam.edition)}`,
       );
     })() : null,
+    topEditionScorer ? createRecordCard(
+      'Más goles en un Mundial',
+      String(topEditionScorer.goals),
+      topEditionScorer.player.teamCode,
+      topEditionScorer.player.name,
+      getEditionYear(topEditionScorer.edition),
+    ) : null,
+    topMvp ? createRecordCard(
+      'Más Balones de Oro',
+      String(topMvp.count),
+      topMvp.player.teamCode,
+      topMvp.player.name,
+    ) : null,
   ].filter(Boolean);
 
   if (records.length > 0) {
     container.appendChild(
       el('div', {
-        className: 'grid grid-cols-2 md:grid-cols-4 gap-3 mb-6',
+        className: 'grid grid-cols-2 md:grid-cols-3 gap-3 mb-6',
         children: records,
       })
     );
@@ -130,24 +146,6 @@ export function renderStats(container, state) {
 
   if (stats.highestScoring && stats.highestScoring.length > 0) {
     container.appendChild(createMatchList('Partidos con m\u00e1s goles', stats.highestScoring.slice(0, 3)));
-  }
-
-  // ── Player stats sections ──────────────────────────────────────────────────
-
-  // Most goals in a single World Cup (by player)
-  if (stats.topSingleEditionScorers && stats.topSingleEditionScorers.length > 0) {
-    container.appendChild(
-      el('p', { text: 'Más goles en un Mundial', className: 'section-title mt-2' })
-    );
-    container.appendChild(createPlayerEditionScorers(stats.topSingleEditionScorers));
-  }
-
-  // Most times MVP
-  if (stats.mvpRanking && stats.mvpRanking.length > 0) {
-    container.appendChild(
-      el('p', { text: 'Más veces Balón de Oro', className: 'section-title mt-2' })
-    );
-    container.appendChild(createMvpRanking(stats.mvpRanking.slice(0, 10)));
   }
 
   // All-time top scorers (top 5, expandable to 50)
