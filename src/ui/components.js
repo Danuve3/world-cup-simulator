@@ -153,6 +153,64 @@ export function countdownDisplay(ms, opts = {}) {
 }
 
 /**
+ * Render a penalty shootout result with kick-by-kick circles.
+ */
+export function createPenaltyDisplay(m) {
+  if (!m.penalties) return null;
+  const { kicks, scoreA, scoreB } = m.penalties;
+  const kicksA = kicks.filter(k => k.team === 'A');
+  const kicksB = kicks.filter(k => k.team === 'B');
+  const winnerA = scoreA > scoreB;
+
+  return el('div', {
+    className: 'mt-2 pt-2 border-t border-border-subtle',
+    children: [
+      el('div', {
+        className: 'text-[9px] text-text-muted uppercase tracking-wider font-semibold mb-1.5',
+        text: 'Penaltis',
+      }),
+      el('div', {
+        className: 'flex items-center gap-2',
+        children: [
+          // Team A: circles + score
+          el('div', {
+            className: 'flex items-center gap-1.5 flex-1',
+            children: [
+              el('div', {
+                className: 'flex items-center gap-1',
+                children: kicksA.map(k => el('div', {
+                  className: `w-2.5 h-2.5 rounded-full shrink-0 ${k.scored ? 'bg-accent' : 'bg-live/50'}`,
+                })),
+              }),
+              el('span', {
+                text: String(scoreA),
+                className: `text-xs font-bold tabular-nums ${winnerA ? 'text-accent' : 'text-text-muted'}`,
+              }),
+            ],
+          }),
+          // Team B: score + circles (mirrored)
+          el('div', {
+            className: 'flex items-center gap-1.5 flex-1 justify-end',
+            children: [
+              el('span', {
+                text: String(scoreB),
+                className: `text-xs font-bold tabular-nums ${!winnerA ? 'text-accent' : 'text-text-muted'}`,
+              }),
+              el('div', {
+                className: 'flex items-center gap-1',
+                children: kicksB.map(k => el('div', {
+                  className: `w-2.5 h-2.5 rounded-full shrink-0 ${k.scored ? 'bg-accent' : 'bg-live/50'}`,
+                })),
+              }),
+            ],
+          }),
+        ],
+      }),
+    ],
+  });
+}
+
+/**
  * Get the simulated year for a given edition.
  */
 export function getEditionYear(edition) {

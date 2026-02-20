@@ -184,6 +184,8 @@ export function getStats(timestamp) {
   const biggestWins = [];
   const highestScoring = [];
   const allTimeRanking = {};
+  let totalMatches = 0;
+  let penaltyShootouts = 0;
 
   for (let i = 0; i < edition; i++) {
     const t = simulateTournament(i);
@@ -221,26 +223,34 @@ export function getStats(timestamp) {
       t.knockout.thirdPlace,
       t.knockout.final,
     ];
+    totalMatches += allMatches.length;
     const teamGoals = {};
     for (const m of allMatches) {
+      if (m.penalties) penaltyShootouts++;
       const diff = Math.abs(m.goalsA - m.goalsB);
       if (diff >= 4) {
         biggestWins.push({
           edition: i,
+          matchId: m.matchId,
           teamA: m.teamA,
           teamB: m.teamB,
           goalsA: m.goalsA,
           goalsB: m.goalsB,
+          events: m.events,
+          extraTime: m.extraTime,
         });
       }
       const total = m.goalsA + m.goalsB;
       if (total >= 5) {
         highestScoring.push({
           edition: i,
+          matchId: m.matchId,
           teamA: m.teamA,
           teamB: m.teamB,
           goalsA: m.goalsA,
           goalsB: m.goalsB,
+          events: m.events,
+          extraTime: m.extraTime,
         });
       }
       teamGoals[m.teamA.code] = (teamGoals[m.teamA.code] || 0) + m.goalsA;
@@ -294,6 +304,8 @@ export function getStats(timestamp) {
       (b.goalsA + b.goalsB) - (a.goalsA + a.goalsB)
     ).slice(0, 20),
     totalTournaments: edition,
+    totalMatches,
+    penaltyShootouts,
   };
 }
 
@@ -345,6 +357,7 @@ export function getLiveStats(timestamp) {
   // Completed + live matches for stats
   let currentGoals = 0;
   let currentMatchCount = 0;
+  let currentPenaltyShootouts = 0;
   const currentBiggestWins = [];
   const completedMatchesForRanking = [];
 
@@ -359,10 +372,13 @@ export function getLiveStats(timestamp) {
       if (diff >= 4) {
         currentBiggestWins.push({
           edition,
+          matchId: m.matchId,
           teamA: m.teamA,
           teamB: m.teamB,
           goalsA: m.goalsA,
           goalsB: m.goalsB,
+          events: m.events,
+          extraTime: m.extraTime,
         });
       }
     }
@@ -391,6 +407,7 @@ export function getLiveStats(timestamp) {
       if (timing.endMin <= cycleMinute) {
         currentGoals += m.goalsA + m.goalsB;
         currentMatchCount++;
+        if (m.penalties) currentPenaltyShootouts++;
         completedMatchesForRanking.push(m);
         const diff = Math.abs(m.goalsA - m.goalsB);
         if (diff >= 4) {
@@ -481,6 +498,8 @@ export function getLiveStats(timestamp) {
     ...baseStats,
     participations: mergedParticipations,
     totalGoals: baseStats.totalGoals + currentGoals,
+    totalMatches: baseStats.totalMatches + currentMatchCount,
+    penaltyShootouts: baseStats.penaltyShootouts + currentPenaltyShootouts,
     currentTournamentGoals: currentGoals,
     currentTournamentMatches: currentMatchCount,
     biggestWins: allBiggestWins,

@@ -1,7 +1,10 @@
-import { el, flag } from '../components.js';
+import { el, flag, createPenaltyDisplay } from '../components.js';
 import { getGroupMatchTiming } from '../../engine/timeline.js';
 import { computeStandings } from '../../engine/group-stage.js';
 import { SCHEDULE } from '../../constants.js';
+
+// Persistent expanded state across re-renders (survives live-match ticks)
+const expandedMatchIds = new Set();
 
 /**
  * Groups view — 8 group tables with anti-spoiler protection and live data.
@@ -313,11 +316,16 @@ function createInlineMatchResult(m, isLive) {
 
   // Completed: wrap with clickable toggle for goal detail
   const detailEl = createGroupMatchDetail(m);
-  detailEl.style.display = 'none';
-  let expanded = false;
+  const isExpanded = expandedMatchIds.has(m.matchId);
+  detailEl.style.display = isExpanded ? 'block' : 'none';
   row.addEventListener('click', () => {
-    expanded = !expanded;
-    detailEl.style.display = expanded ? 'block' : 'none';
+    if (expandedMatchIds.has(m.matchId)) {
+      expandedMatchIds.delete(m.matchId);
+      detailEl.style.display = 'none';
+    } else {
+      expandedMatchIds.add(m.matchId);
+      detailEl.style.display = 'block';
+    }
   });
   return el('div', { children: [row, detailEl] });
 }
@@ -353,6 +361,7 @@ function createGroupMatchDetail(m) {
           })),
         ],
       }),
+      createPenaltyDisplay(m),
     ],
   });
 }

@@ -1,6 +1,9 @@
-import { el, flag, getEditionYear } from '../components.js';
+import { el, flag, getEditionYear, createPenaltyDisplay } from '../components.js';
 import { getCompletedTournaments } from '../../engine/simulation.js';
 import { simulateTournament } from '../../engine/tournament.js';
+
+// Persistent expanded state across re-renders
+const expandedMatchIds = new Set();
 
 /**
  * History view — Past World Cups.
@@ -63,46 +66,90 @@ export function renderHistory(container, state) {
 
 function createHistoryCard(summary, onClick) {
   return el('div', {
-    className: 'card card-interactive p-4',
+    className: 'card card-interactive overflow-hidden',
     events: { click: onClick },
     children: [
+      // Header: year + host
       el('div', {
-        className: 'flex items-center justify-between mb-3',
+        className: 'flex items-center justify-between px-3.5 py-2 border-b border-border-subtle',
         children: [
+          el('span', {
+            text: `Mundial ${getEditionYear(summary.edition)}`,
+            className: 'text-[10px] font-bold uppercase tracking-widest text-text-muted',
+          }),
           el('div', {
-            className: 'flex items-center gap-2',
+            className: 'flex items-center gap-1.5',
             children: [
-              el('span', { text: `${getEditionYear(summary.edition)}`, className: 'text-xs text-text-muted font-medium' }),
-              flag(summary.host.code, 20),
-              el('span', { text: summary.host.name, className: 'text-xs text-text-secondary' }),
+              flag(summary.host.code, 14),
+              el('span', { text: summary.host.name, className: 'text-[10px] text-text-muted' }),
             ],
           }),
         ],
       }),
+      // Body
       el('div', {
-        className: 'flex items-center gap-3 mb-3',
+        className: 'flex',
         children: [
+          // Champion — left zone
           el('div', {
-            className: 'w-10 h-10 rounded-xl bg-gold-light flex items-center justify-center',
-            children: [flag(summary.champion.code, 24)],
-          }),
-          el('div', {
+            className: 'flex-1 min-w-0 relative overflow-hidden flex flex-col items-center justify-center gap-2 py-4 px-3',
             children: [
-              el('div', { text: summary.champion.name, className: 'text-sm font-bold text-gold' }),
-              el('div', { text: 'Campe\u00f3n', className: 'text-[10px] text-text-muted' }),
+              // Flag — hero element
+              el('div', {
+                className: 'ring-1 ring-black/10 rounded overflow-hidden shadow-sm',
+                children: [flag(summary.champion.code, 56)],
+              }),
+              // Name + label
+              el('div', {
+                className: 'relative text-center',
+                children: [
+                  el('div', { text: summary.champion.name, className: 'text-base font-bold text-gold leading-tight' }),
+                  el('div', { text: 'Campe\u00f3n', className: 'text-[9px] text-text-muted mt-0.5' }),
+                ],
+              }),
             ],
           }),
+          // Divider
+          el('div', { className: 'w-px bg-border-subtle self-stretch my-2' }),
+          // Right zone: runner-up + 3rd + stats
+          el('div', {
+            className: 'w-[46%] shrink-0 p-3 flex flex-col justify-between gap-2',
+            children: [
+              summary.runnerUp ? el('div', {
+                children: [
+                  el('div', { text: 'Subcampe\u00f3n', className: 'text-[9px] text-text-muted uppercase tracking-wider font-semibold' }),
+                  el('div', {
+                    className: 'flex items-center gap-1.5 mt-0.5',
+                    children: [
+                      flag(summary.runnerUp.code, 14),
+                      el('span', { text: summary.runnerUp.name, className: 'text-xs text-text-secondary truncate' }),
+                    ],
+                  }),
+                ],
+              }) : null,
+              summary.thirdPlace ? el('div', {
+                children: [
+                  el('div', { text: '3.\u00ba Puesto', className: 'text-[9px] text-text-muted uppercase tracking-wider font-semibold' }),
+                  el('div', {
+                    className: 'flex items-center gap-1.5 mt-0.5',
+                    children: [
+                      flag(summary.thirdPlace.code, 14),
+                      el('span', { text: summary.thirdPlace.name, className: 'text-xs text-text-secondary truncate' }),
+                    ],
+                  }),
+                ],
+              }) : null,
+              el('div', {
+                className: 'flex items-center gap-2 pt-1 border-t border-border-subtle',
+                children: [
+                  el('span', { text: `\u26bd ${summary.totalGoals}`, className: 'text-[10px] text-text-muted font-medium tabular-nums' }),
+                  el('span', { text: '\u00b7', className: 'text-text-muted' }),
+                  el('span', { text: `${summary.totalMatches} partidos`, className: 'text-[10px] text-text-muted tabular-nums' }),
+                ],
+              }),
+            ].filter(Boolean),
+          }),
         ],
-      }),
-      el('div', {
-        className: 'flex gap-2',
-        children: [
-          el('span', { className: 'pill !py-1 !px-2.5 !text-[10px]', text: `${summary.totalGoals} goles` }),
-          summary.runnerUp ? el('span', {
-            className: 'pill !py-1 !px-2.5 !text-[10px]',
-            text: `vs ${summary.runnerUp.name}`,
-          }) : null,
-        ].filter(Boolean),
       }),
     ],
   });
@@ -209,11 +256,62 @@ function renderHistoryDetail(container, state, edition) {
   }
 }
 
+function createMatchTimeline(m) {
+  const events = m.events || [];
+  const maxMinute = m.extraTime ? 120 : 90;
+  const pct = min => `${Math.min(100, (min / maxMinute) * 100).toFixed(1)}%`;
+  const goalsA = events.filter(e => e.team === 'A');
+  const goalsB = events.filter(e => e.team === 'B');
+
+  return el('div', {
+    className: 'pt-2 pb-0.5 border-t border-border-subtle mt-2',
+    children: [
+      events.length === 0
+        ? el('p', { text: 'Sin goles', className: 'text-[10px] text-text-muted text-center' })
+        : el('div', {
+            className: 'flex gap-2 mb-1',
+            children: [
+              el('div', { className: 'flex-1 flex flex-col gap-0.5', children: goalsA.map(e => el('div', { text: `⚽ ${e.minute}'`, className: 'text-[10px] text-accent font-medium' })) }),
+              el('div', { className: 'shrink-0 w-8' }),
+              el('div', { className: 'flex-1 flex flex-col gap-0.5 items-end', children: goalsB.map(e => el('div', { text: `⚽ ${e.minute}'`, className: 'text-[10px] text-live font-medium' })) }),
+            ],
+          }),
+      el('div', {
+        className: 'relative h-3',
+        children: [
+          el('div', { className: 'absolute inset-x-0 top-[5px] h-[1.5px] bg-text-muted/20 w-full rounded-full' }),
+          ...events.map(e => el('div', {
+            className: `absolute w-1.5 h-1.5 top-1/2 -translate-y-1/2 -translate-x-1 rounded-full ${e.team === 'A' ? 'bg-accent' : 'bg-live'}`,
+            style: { left: pct(e.minute) },
+          })),
+        ],
+      }),
+      createPenaltyDisplay(m),
+    ],
+  });
+}
+
+function withExpandableTimeline(m, rowEl) {
+  const detailEl = createMatchTimeline(m);
+  detailEl.style.display = expandedMatchIds.has(m.matchId) ? 'block' : 'none';
+  rowEl.style.cursor = 'pointer';
+  rowEl.addEventListener('click', () => {
+    if (expandedMatchIds.has(m.matchId)) {
+      expandedMatchIds.delete(m.matchId);
+      detailEl.style.display = 'none';
+    } else {
+      expandedMatchIds.add(m.matchId);
+      detailEl.style.display = 'block';
+    }
+  });
+  return el('div', { children: [rowEl, detailEl] });
+}
+
 function createDetailMatch(m) {
   const aWon = m.winner === 'A';
   const bWon = m.winner === 'B';
 
-  return el('div', {
+  const row = el('div', {
     className: 'card p-3',
     children: [
       el('div', {
@@ -249,6 +347,8 @@ function createDetailMatch(m) {
       }) : null,
     ].filter(Boolean),
   });
+
+  return withExpandableTimeline(m, row);
 }
 
 function createHistoryStandingsHeader() {
@@ -308,7 +408,7 @@ function createHistoryStandingsRow(row, i) {
 function createHistoryInlineMatch(m) {
   const aWon = m.goalsA > m.goalsB;
   const bWon = m.goalsB > m.goalsA;
-  return el('div', {
+  const row = el('div', {
     className: 'flex items-center gap-1.5 text-[11px]',
     children: [
       el('div', {
@@ -331,6 +431,7 @@ function createHistoryInlineMatch(m) {
       }),
     ],
   });
+  return withExpandableTimeline(m, row);
 }
 
 function createMiniPodium(emoji, label, team, isChamp = false) {

@@ -1188,7 +1188,7 @@ function renderCelebration(state) {
             ],
           }),
           final.penalties ? el('div', {
-            text: `Penales: ${final.penalties.scoreA}-${final.penalties.scoreB}`,
+            text: `Penaltis: ${final.penalties.scoreA}-${final.penalties.scoreB}`,
             className: 'text-xs text-text-muted text-center mt-3',
           }) : null,
         ].filter(Boolean),

@@ -1,10 +1,12 @@
-import { el, flag, getEditionYear } from '../components.js';
+import { el, flag, getEditionYear, createPenaltyDisplay } from '../components.js';
 import { getLiveStats } from '../../engine/simulation.js';
 import { simulateTournament } from '../../engine/tournament.js';
 import { getTeamByCode, TEAMS } from '../../engine/teams.js';
 
 // Persists expanded state across re-renders during live updates
 const expandedSections = new Set();
+// Persists expanded match detail state (keyed by "edition-matchId")
+const expandedMatchIds = new Set();
 
 /**
  * Stats view — Rankings and records (with live data from current tournament).
@@ -34,18 +36,23 @@ export function renderStats(container, state) {
   // Overview
   const totalTournaments = stats.totalTournaments + (stats.hasLiveData ? 1 : 0);
   const uniqueTeams = Object.keys(stats.participations).length;
+
+  const totalMatches = stats.totalMatches || 0;
+  const goalsPerMatch = totalMatches > 0 ? (stats.totalGoals / totalMatches).toFixed(2) : '—';
   const avgGoals = totalTournaments > 0 ? Math.round(stats.totalGoals / totalTournaments) : 0;
 
   const overviewCards = [
     createStatCard('Mundiales', totalTournaments, 'text-accent'),
+    createStatCard('Partidos', totalMatches, 'text-accent'),
     createStatCard('Goles totales', stats.totalGoals, 'text-accent'),
+    createStatCard('Goles/Partido', goalsPerMatch, 'text-text-primary'),
     createStatCard('Goles/Mundial', avgGoals, 'text-text-primary'),
-    createStatCard('Selecciones', uniqueTeams, 'text-gold'),
+    createStatCard('Selecciones participantes', uniqueTeams, 'text-gold'),
   ];
 
   container.appendChild(
     el('div', {
-      className: 'grid grid-cols-2 md:grid-cols-4 gap-3 mb-6',
+      className: 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6',
       children: overviewCards,
     })
   );
@@ -377,6 +384,42 @@ function createAllTimeRanking(ranking, liveTeamCodes, rankingDeltas) {
   });
 }
 
+function createMatchDetail(m) {
+  const events = m.events || [];
+  const maxMinute = m.extraTime ? 120 : 90;
+  const pct = min => `${Math.min(100, (min / maxMinute) * 100).toFixed(1)}%`;
+  const goalsA = events.filter(e => e.team === 'A');
+  const goalsB = events.filter(e => e.team === 'B');
+
+  return el('div', {
+    className: 'pt-2 pb-0.5 border-t border-border-subtle mt-2',
+    children: [
+      events.length === 0
+        ? el('p', { text: 'Sin goles', className: 'text-[10px] text-text-muted text-center' })
+        : el('div', {
+            className: 'flex gap-2 mb-1',
+            children: [
+              el('div', { className: 'flex-1 flex flex-col gap-0.5', children: goalsA.map(e => el('div', { text: `⚽ ${e.minute}'`, className: 'text-[10px] text-accent font-medium' })) }),
+              el('div', { className: 'shrink-0 w-8' }),
+              el('div', { className: 'flex-1 flex flex-col gap-0.5 items-end', children: goalsB.map(e => el('div', { text: `⚽ ${e.minute}'`, className: 'text-[10px] text-live font-medium' })) }),
+            ],
+          }),
+      el('div', {
+        className: 'relative h-3',
+        children: [
+          el('div', { className: 'absolute inset-x-0 top-[5px] h-[1.5px] bg-bg-surface rounded-full' }),
+          el('div', { className: 'absolute left-0 top-[5px] h-[1.5px] bg-text-muted/20 w-full rounded-full' }),
+          ...events.map(e => el('div', {
+            className: `absolute w-1.5 h-1.5 top-1/2 -translate-y-1/2 -translate-x-1 rounded-full ${e.team === 'A' ? 'bg-accent' : 'bg-live'}`,
+            style: { left: pct(e.minute) },
+          })),
+        ],
+      }),
+      createPenaltyDisplay(m),
+    ],
+  });
+}
+
 function createMatchList(title, wins) {
   return el('div', {
     className: 'mt-6',
@@ -387,9 +430,14 @@ function createMatchList(title, wins) {
         children: wins.map((win) => {
           const tournament = simulateTournament(win.edition);
           const editionLabel = `${tournament.host.name} ${getEditionYear(win.edition)}`;
+          const key = `${win.edition}-${win.matchId}`;
+          const isExpanded = expandedMatchIds.has(key);
 
-          return el('div', {
-            className: 'card p-3',
+          const detailEl = createMatchDetail(win);
+          detailEl.style.display = isExpanded ? 'block' : 'none';
+
+          const card = el('div', {
+            className: 'card p-3 cursor-pointer select-none',
             children: [
               el('div', {
                 className: 'flex items-center gap-2',
@@ -428,8 +476,21 @@ function createMatchList(title, wins) {
                 className: 'text-[10px] text-text-muted text-center mt-1.5',
                 text: editionLabel,
               }),
+              detailEl,
             ],
           });
+
+          card.addEventListener('click', () => {
+            if (expandedMatchIds.has(key)) {
+              expandedMatchIds.delete(key);
+              detailEl.style.display = 'none';
+            } else {
+              expandedMatchIds.add(key);
+              detailEl.style.display = 'block';
+            }
+          });
+
+          return card;
         }),
       }),
     ],

@@ -128,11 +128,17 @@ function createHeader() {
         className: 'flex items-center justify-between',
         children: [
           el('div', {
-            className: 'flex items-center gap-2.5 cursor-pointer',
+            className: 'flex items-center gap-1.5 cursor-pointer',
             events: { click: () => navigate('/') },
             children: [
-              el('span', { text: '\u26bd', className: 'text-lg' }),
-              el('span', { text: 'World Cup Simulator', className: 'text-sm font-bold' }),
+              el('span', { text: '\u26bd', className: 'text-lg animate-spin-slow' }),
+              el('div', {
+                className: 'flex flex-col',
+                children: [
+                  el('span', { text: 'World Cup', className: 'text-xs font-semibold leading-tight' }),
+                  el('span', { text: 'Simulator', className: 'text-[9px] text-accent leading-tight uppercase font-medium w-full block tracking-[0.1em]', style: { textAlign: 'justify', textAlignLast: 'justify' } }),
+                ],
+              }),
             ],
           }),
           el('div', {

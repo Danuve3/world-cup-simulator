@@ -1,7 +1,62 @@
-import { el, flag } from '../components.js';
+import { el, flag, createPenaltyDisplay } from '../components.js';
 import { getKnockoutMatchTiming, getGroupMatchTiming } from '../../engine/timeline.js';
 import { computeStandings } from '../../engine/group-stage.js';
 import { SCHEDULE } from '../../constants.js';
+
+// Persistent expanded state across re-renders
+const expandedMatchIds = new Set();
+
+function createMatchTimeline(m) {
+  const events = m.events || [];
+  const maxMinute = m.extraTime ? 120 : 90;
+  const pct = min => `${Math.min(100, (min / maxMinute) * 100).toFixed(1)}%`;
+  const goalsA = events.filter(e => e.team === 'A');
+  const goalsB = events.filter(e => e.team === 'B');
+
+  return el('div', {
+    className: 'pt-2 pb-0.5 border-t border-border-subtle mt-2 px-1',
+    children: [
+      events.length === 0
+        ? el('p', { text: 'Sin goles', className: 'text-[10px] text-text-muted text-center' })
+        : el('div', {
+            className: 'flex gap-2 mb-1',
+            children: [
+              el('div', { className: 'flex-1 flex flex-col gap-0.5', children: goalsA.map(e => el('div', { text: `⚽ ${e.minute}'`, className: 'text-[10px] text-accent font-medium' })) }),
+              el('div', { className: 'shrink-0 w-8' }),
+              el('div', { className: 'flex-1 flex flex-col gap-0.5 items-end', children: goalsB.map(e => el('div', { text: `⚽ ${e.minute}'`, className: 'text-[10px] text-live font-medium' })) }),
+            ],
+          }),
+      el('div', {
+        className: 'relative h-3',
+        children: [
+          el('div', { className: 'absolute inset-x-0 top-[5px] h-[1.5px] bg-text-muted/20 w-full rounded-full' }),
+          ...events.map(e => el('div', {
+            className: `absolute w-1.5 h-1.5 top-1/2 -translate-y-1/2 -translate-x-1 rounded-full ${e.team === 'A' ? 'bg-accent' : 'bg-live'}`,
+            style: { left: pct(e.minute) },
+          })),
+        ],
+      }),
+      createPenaltyDisplay(m),
+    ],
+  });
+}
+
+function withTimeline(match, cardEl) {
+  const detailEl = createMatchTimeline(match);
+  detailEl.style.display = expandedMatchIds.has(match.matchId) ? 'block' : 'none';
+  cardEl.style.cursor = 'pointer';
+  cardEl.addEventListener('click', () => {
+    if (expandedMatchIds.has(match.matchId)) {
+      expandedMatchIds.delete(match.matchId);
+      detailEl.style.display = 'none';
+    } else {
+      expandedMatchIds.add(match.matchId);
+      detailEl.style.display = 'block';
+    }
+  });
+  cardEl.appendChild(detailEl);
+  return cardEl;
+}
 
 // R16 bracket structure: which group pairs feed each match
 const R16_GROUPS = [
@@ -168,28 +223,43 @@ export function renderBracket(container, state) {
     })
   );
 
+  const { cycleStart } = state;
+
   // Desktop: visual bracket
-  container.appendChild(createDesktopBracket(ko, isComplete));
+  container.appendChild(createDesktopBracket(ko, isComplete, cycleStart));
   // Mobile: stacked rounds
-  container.appendChild(createMobileBracket(ko, isComplete));
+  container.appendChild(createMobileBracket(ko, isComplete, cycleStart));
 }
 
-function createDesktopBracket(ko, isComplete) {
+function matchStartMs(cycleStart, round, idx) {
+  const timing = getKnockoutMatchTiming(round, idx);
+  return cycleStart + timing.startMin * 60 * 1000;
+}
+
+function formatMatchDateTime(ms) {
+  const d = new Date(ms);
+  return {
+    date: `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`,
+    time: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
+  };
+}
+
+function createDesktopBracket(ko, isComplete, cycleStart) {
   return el('div', {
     className: 'hidden md:grid grid-cols-7 gap-x-2 items-center mb-4',
     children: [
-      createBracketColumn(ko.r16.slice(0, 4), 'Octavos', 'R16', 0, isComplete),
-      createBracketColumn(ko.qf.slice(0, 2), 'Cuartos', 'QF', 0, isComplete),
-      createBracketColumn(ko.sf.slice(0, 1), 'Semis', 'SF', 0, isComplete),
-      createFinalColumn(ko, isComplete),
-      createBracketColumn(ko.sf.slice(1, 2), '', 'SF', 1, isComplete),
-      createBracketColumn(ko.qf.slice(2, 4), '', 'QF', 2, isComplete),
-      createBracketColumn(ko.r16.slice(4, 8), '', 'R16', 4, isComplete),
+      createBracketColumn(ko.r16.slice(0, 4), 'Octavos', 'R16', 0, isComplete, cycleStart),
+      createBracketColumn(ko.qf.slice(0, 2), 'Cuartos', 'QF', 0, isComplete, cycleStart),
+      createBracketColumn(ko.sf.slice(0, 1), 'Semis', 'SF', 0, isComplete, cycleStart),
+      createFinalColumn(ko, isComplete, cycleStart),
+      createBracketColumn(ko.sf.slice(1, 2), '', 'SF', 1, isComplete, cycleStart),
+      createBracketColumn(ko.qf.slice(2, 4), '', 'QF', 2, isComplete, cycleStart),
+      createBracketColumn(ko.r16.slice(4, 8), '', 'R16', 4, isComplete, cycleStart),
     ],
   });
 }
 
-function createBracketColumn(matches, label, round, startIndex, isComplete) {
+function createBracketColumn(matches, label, round, startIndex, isComplete, cycleStart) {
   return el('div', {
     className: 'flex flex-col justify-around gap-3 py-2',
     children: [
@@ -197,12 +267,12 @@ function createBracketColumn(matches, label, round, startIndex, isComplete) {
         text: label,
         className: 'text-[10px] text-text-muted text-center uppercase tracking-widest font-semibold mb-1',
       }) : el('div'),
-      ...matches.map((m, i) => createCompactMatch(m, isComplete(round, startIndex + i))),
+      ...matches.map((m, i) => createCompactMatch(m, isComplete(round, startIndex + i), matchStartMs(cycleStart, round, startIndex + i))),
     ],
   });
 }
 
-function createFinalColumn(ko, isComplete) {
+function createFinalColumn(ko, isComplete, cycleStart) {
   const finalDone = isComplete('FINAL', 0);
   const thirdDone = isComplete('THIRD', 0);
 
@@ -211,42 +281,58 @@ function createFinalColumn(ko, isComplete) {
     children: [
       el('div', { text: 'FINAL', className: 'text-xs text-gold tracking-widest font-extrabold mb-2' }),
       el('div', { text: '\ud83c\udfc6', className: 'text-4xl mb-3 animate-float' }),
-      createFinalMatch(ko.final, finalDone),
+      createFinalMatch(ko.final, finalDone, matchStartMs(cycleStart, 'FINAL', 0)),
       el('div', {
         className: 'mt-4 pt-3 border-t border-border-subtle w-full',
         children: [
           el('div', { text: '3ER PUESTO', className: 'text-[9px] text-text-muted text-center uppercase tracking-widest font-semibold mb-2' }),
-          createBracketMatch(ko.thirdPlace, false, thirdDone),
+          createBracketMatch(ko.thirdPlace, false, thirdDone, matchStartMs(cycleStart, 'THIRD', 0)),
         ],
       }),
     ],
   });
 }
 
-function createCompactMatch(match, completed) {
+function createDateBadge(ms, small = false) {
+  const { date, time } = formatMatchDateTime(ms);
+  return el('div', {
+    className: 'flex flex-col items-end justify-center shrink-0 gap-0.5',
+    children: [
+      el('span', { text: date, className: `${small ? 'text-[8px]' : 'text-[10px]'} text-text-muted tabular-nums font-medium leading-none` }),
+      el('span', { text: time, className: `${small ? 'text-[8px]' : 'text-[10px]'} text-text-muted tabular-nums font-medium leading-none` }),
+    ],
+  });
+}
+
+function createCompactMatch(match, completed, startMs) {
   if (!completed) {
     return el('div', {
-      className: 'card p-2 text-xs opacity-50',
+      className: 'card p-2 text-xs opacity-60 flex items-center gap-2',
       children: [
-        createTeamRow(match.teamA, '?', false),
-        el('div', { className: 'divider my-0.5' }),
-        createTeamRow(match.teamB, '?', false),
+        el('div', {
+          className: 'flex-1 min-w-0',
+          children: [
+            createTeamRow(match.teamA, null, false),
+            el('div', { className: 'divider my-0.5' }),
+            createTeamRow(match.teamB, null, false),
+          ],
+        }),
+        createDateBadge(startMs, true),
       ],
     });
   }
   const winner = match.winner;
-  return el('div', {
+  return withTimeline(match, el('div', {
     className: 'card p-2 text-xs',
     children: [
       createTeamRow(match.teamA, match.goalsA, winner === 'A'),
-      el('div', { className: 'divider my-0.5' }),
       createTeamRow(match.teamB, match.goalsB, winner === 'B'),
       match.penalties ? el('div', {
         text: `pen ${match.penalties.scoreA}-${match.penalties.scoreB}`,
         className: 'text-[8px] text-text-muted text-center mt-0.5',
       }) : null,
     ].filter(Boolean),
-  });
+  }));
 }
 
 function createTeamRow(team, goals, isWinner) {
@@ -264,15 +350,15 @@ function createTeamRow(team, goals, isWinner) {
           }),
         ],
       }),
-      el('span', {
+      goals !== null ? el('span', {
         text: String(goals),
         className: `tabular-nums text-[11px] ml-1 ${isWinner ? 'text-accent font-bold' : 'text-text-muted'}`,
-      }),
+      }) : null,
     ],
   });
 }
 
-function createMobileBracket(ko, isComplete) {
+function createMobileBracket(ko, isComplete, cycleStart) {
   const rounds = [
     { label: 'Final', matches: [ko.final], round: 'FINAL', isFinal: true },
     { label: 'Tercer Puesto', matches: [ko.thirdPlace], round: 'THIRD' },
@@ -288,10 +374,10 @@ function createMobileBracket(ko, isComplete) {
         children: [
           el('p', { text: r.label, className: 'section-title' }),
           r.isFinal
-            ? createFinalMatch(ko.final, isComplete('FINAL', 0))
+            ? createFinalMatch(ko.final, isComplete('FINAL', 0), matchStartMs(cycleStart, 'FINAL', 0))
             : el('div', {
                 className: `grid grid-cols-1 ${r.matches.length > 2 ? 'sm:grid-cols-2' : ''} gap-2`,
-                children: r.matches.map((m, i) => createBracketMatch(m, false, isComplete(r.round, i))),
+                children: r.matches.map((m, i) => createBracketMatch(m, false, isComplete(r.round, i), matchStartMs(cycleStart, r.round, i))),
               }),
         ],
       })
@@ -299,49 +385,43 @@ function createMobileBracket(ko, isComplete) {
   });
 }
 
-function createBracketMatch(match, isFinal = false, completed = true) {
+function createBracketMatch(match, isFinal = false, completed = true, startMs) {
   const hasTeamA = match.teamA && match.teamA.code;
   const hasTeamB = match.teamB && match.teamB.code;
 
   if (!completed) {
     return el('div', {
-      className: 'card p-3 max-w-sm opacity-50',
+      className: 'card p-3 opacity-60 flex items-center gap-3 w-full',
       children: [
         el('div', {
-          className: 'flex items-center justify-between py-1.5 px-2',
+          className: 'flex-1 min-w-0',
           children: [
             el('div', {
-              className: 'flex items-center gap-2 min-w-0',
+              className: 'flex items-center gap-2 py-1.5 px-2',
               children: [
                 teamFlag(match.teamA, 20),
                 el('span', { text: match.teamA?.name || '?', className: `text-sm ${hasTeamA ? '' : 'text-text-muted italic'}` }),
               ],
             }),
-            el('span', { text: '?', className: 'text-sm font-bold tabular-nums text-text-muted' }),
-          ],
-        }),
-        el('div', { className: 'divider my-1' }),
-        el('div', {
-          className: 'flex items-center justify-between py-1.5 px-2',
-          children: [
+            el('div', { className: 'divider my-1' }),
             el('div', {
-              className: 'flex items-center gap-2 min-w-0',
+              className: 'flex items-center gap-2 py-1.5 px-2',
               children: [
                 teamFlag(match.teamB, 20),
                 el('span', { text: match.teamB?.name || '?', className: `text-sm ${hasTeamB ? '' : 'text-text-muted italic'}` }),
               ],
             }),
-            el('span', { text: '?', className: 'text-sm font-bold tabular-nums text-text-muted' }),
           ],
         }),
+        createDateBadge(startMs),
       ],
     });
   }
 
   const winner = match.winner;
-  const cls = isFinal ? 'card p-3 w-full max-w-[220px] border border-gold/20' : 'card p-3 max-w-sm';
+  const cls = isFinal ? 'card p-3 w-full border border-gold/20' : 'card p-3 w-full';
 
-  return el('div', {
+  return withTimeline(match, el('div', {
     className: cls,
     children: [
       el('div', {
@@ -360,7 +440,6 @@ function createBracketMatch(match, isFinal = false, completed = true) {
           }),
         ],
       }),
-      el('div', { className: 'divider my-1' }),
       el('div', {
         className: `flex items-center justify-between py-1.5 px-2 rounded ${winner === 'B' ? 'bg-accent-light' : ''}`,
         children: [
@@ -378,46 +457,46 @@ function createBracketMatch(match, isFinal = false, completed = true) {
         ],
       }),
       (match.penalties || match.extraTime) ? el('div', {
-        text: match.penalties ? `Penales: ${match.penalties.scoreA}-${match.penalties.scoreB}` : 'Pr\u00f3rroga',
+        text: match.penalties ? `Penaltis: ${match.penalties.scoreA}-${match.penalties.scoreB}` : 'Pr\u00f3rroga',
         className: 'text-[10px] text-text-muted text-center mt-1.5',
       }) : null,
     ].filter(Boolean),
+  }));
+}
+
+function finalTeamColumn(team, isWinner) {
+  const hasTeam = team && team.code;
+  return el('div', {
+    className: 'flex-1 flex flex-col items-center gap-2',
+    children: [
+      teamFlag(team, 48),
+      el('span', {
+        text: team?.name || '?',
+        className: `text-xs text-center font-semibold leading-tight ${isWinner ? 'text-accent' : hasTeam ? '' : 'text-text-muted italic'}`,
+      }),
+    ],
   });
 }
 
-function createFinalMatch(match, completed) {
-  const hasTeamA = match.teamA && match.teamA.code;
-  const hasTeamB = match.teamB && match.teamB.code;
-
+function createFinalMatch(match, completed, startMs) {
   if (!completed) {
+    const { date, time } = formatMatchDateTime(startMs);
     return el('div', {
-      className: 'card p-5 w-full max-w-xs mx-auto border-2 border-gold/20 bg-gold-light/30 opacity-60',
+      className: 'card p-4 w-full border-2 border-gold/20 bg-gold-light/30 opacity-70',
       children: [
         el('div', {
-          className: 'flex items-center justify-between py-2 px-3',
+          className: 'flex items-center gap-2',
           children: [
+            finalTeamColumn(match.teamA, false),
             el('div', {
-              className: 'flex items-center gap-3 min-w-0',
+              className: 'flex flex-col items-center justify-center gap-1 shrink-0',
               children: [
-                teamFlag(match.teamA, 40),
-                el('span', { text: match.teamA?.name || '?', className: `text-base ${hasTeamA ? 'font-semibold' : 'text-text-muted italic'}` }),
+                el('span', { text: 'VS', className: 'text-sm font-extrabold text-text-muted tracking-widest' }),
+                el('span', { text: date, className: 'text-[10px] text-text-muted tabular-nums font-medium leading-none' }),
+                el('span', { text: time, className: 'text-[10px] text-text-muted tabular-nums font-medium leading-none' }),
               ],
             }),
-            el('span', { text: '?', className: 'text-xl font-bold text-text-muted' }),
-          ],
-        }),
-        el('div', { className: 'divider my-1.5' }),
-        el('div', {
-          className: 'flex items-center justify-between py-2 px-3',
-          children: [
-            el('div', {
-              className: 'flex items-center gap-3 min-w-0',
-              children: [
-                teamFlag(match.teamB, 40),
-                el('span', { text: match.teamB?.name || '?', className: `text-base ${hasTeamB ? 'font-semibold' : 'text-text-muted italic'}` }),
-              ],
-            }),
-            el('span', { text: '?', className: 'text-xl font-bold text-text-muted' }),
+            finalTeamColumn(match.teamB, false),
           ],
         }),
       ],
@@ -425,47 +504,42 @@ function createFinalMatch(match, completed) {
   }
 
   const winner = match.winner;
-  return el('div', {
-    className: 'card p-5 w-full max-w-xs mx-auto border-2 border-gold/30',
+  return withTimeline(match, el('div', {
+    className: 'card p-4 w-full border-2 border-gold/30',
     style: { background: 'linear-gradient(135deg, var(--color-bg-card), rgba(251,191,36,0.06))' },
     children: [
       el('div', {
-        className: `flex items-center justify-between py-2 px-3 rounded-lg ${winner === 'A' ? 'bg-accent-light' : ''}`,
+        className: 'flex items-center gap-2',
         children: [
+          finalTeamColumn(match.teamA, winner === 'A'),
           el('div', {
-            className: 'flex items-center gap-3 min-w-0',
+            className: 'flex flex-col items-center justify-center gap-0.5 shrink-0',
             children: [
-              teamFlag(match.teamA, 40),
-              el('span', { text: match.teamA.name, className: `text-base ${winner === 'A' ? 'font-bold text-accent' : 'font-semibold'}` }),
-            ],
+              el('div', {
+                className: 'flex items-center gap-1.5',
+                children: [
+                  el('span', {
+                    text: String(match.goalsA),
+                    className: `text-2xl font-extrabold tabular-nums ${winner === 'A' ? 'text-accent' : 'text-text-muted'}`,
+                  }),
+                  el('span', { text: '-', className: 'text-lg font-bold text-text-muted' }),
+                  el('span', {
+                    text: String(match.goalsB),
+                    className: `text-2xl font-extrabold tabular-nums ${winner === 'B' ? 'text-accent' : 'text-text-muted'}`,
+                  }),
+                ],
+              }),
+              match.extraTime && !match.penalties
+                ? el('span', { text: 'Prórroga', className: 'text-[9px] text-text-muted font-medium' })
+                : null,
+              match.penalties
+                ? el('span', { text: `pen ${match.penalties.scoreA}-${match.penalties.scoreB}`, className: 'text-[9px] text-text-muted font-medium' })
+                : null,
+            ].filter(Boolean),
           }),
-          el('span', {
-            text: String(match.goalsA),
-            className: `score-num score-num-lg ${winner === 'A' ? 'score-num-winner' : ''}`,
-          }),
+          finalTeamColumn(match.teamB, winner === 'B'),
         ],
       }),
-      el('div', { className: 'divider my-1.5' }),
-      el('div', {
-        className: `flex items-center justify-between py-2 px-3 rounded-lg ${winner === 'B' ? 'bg-accent-light' : ''}`,
-        children: [
-          el('div', {
-            className: 'flex items-center gap-3 min-w-0',
-            children: [
-              teamFlag(match.teamB, 40),
-              el('span', { text: match.teamB.name, className: `text-base ${winner === 'B' ? 'font-bold text-accent' : 'font-semibold'}` }),
-            ],
-          }),
-          el('span', {
-            text: String(match.goalsB),
-            className: `score-num score-num-lg ${winner === 'B' ? 'score-num-winner' : ''}`,
-          }),
-        ],
-      }),
-      (match.penalties || match.extraTime) ? el('div', {
-        text: match.penalties ? `Penales: ${match.penalties.scoreA}-${match.penalties.scoreB}` : 'Pr\u00f3rroga',
-        className: 'text-xs text-text-muted text-center mt-2',
-      }) : null,
-    ].filter(Boolean),
-  });
+    ],
+  }));
 }
