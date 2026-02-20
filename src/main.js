@@ -7,6 +7,7 @@ import { renderGroups } from './ui/views/groups.js';
 import { renderBracket } from './ui/views/bracket.js';
 import { renderHistory } from './ui/views/history.js';
 import { renderStats } from './ui/views/stats.js';
+import { renderTeams } from './ui/views/teams.js';
 
 let currentState = null;
 let mainContainer = null;
@@ -28,6 +29,11 @@ route('/groups', (container) => {
 route('/bracket', (container) => {
   currentView = 'bracket';
   renderBracket(container, currentState);
+});
+
+route('/teams', (container) => {
+  currentView = 'teams';
+  renderTeams(container, currentState);
 });
 
 route('/history', (container) => {

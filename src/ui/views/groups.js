@@ -345,9 +345,9 @@ function createGroupMatchDetail(m) {
         : el('div', {
             className: 'flex gap-2 mb-1',
             children: [
-              el('div', { className: 'flex-1 flex flex-col gap-0.5', children: goalsA.map(e => el('div', { text: `⚽ ${e.minute}'`, className: 'text-[10px] text-accent font-medium' })) }),
+              el('div', { className: 'flex-1 flex flex-col gap-0.5 min-w-0', children: goalsA.map(e => el('div', { text: e.scorerName ? `⚽ ${e.minute}' ${e.scorerName}` : `⚽ ${e.minute}'`, className: 'text-[10px] text-accent font-medium truncate' })) }),
               el('div', { className: 'shrink-0 w-8' }),
-              el('div', { className: 'flex-1 flex flex-col gap-0.5 items-end', children: goalsB.map(e => el('div', { text: `⚽ ${e.minute}'`, className: 'text-[10px] text-live font-medium' })) }),
+              el('div', { className: 'flex-1 flex flex-col gap-0.5 items-end min-w-0', children: goalsB.map(e => el('div', { text: e.scorerName ? `${e.scorerName} ${e.minute}' ⚽` : `⚽ ${e.minute}'`, className: 'text-[10px] text-live font-medium truncate' })) }),
             ],
           }),
       el('div', {

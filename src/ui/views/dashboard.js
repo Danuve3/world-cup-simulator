@@ -715,9 +715,9 @@ function createMatchGoalDetail(events, extraTime) {
         : el('div', {
             className: 'flex gap-3 mb-2',
             children: [
-              el('div', { className: 'flex-1 flex flex-col gap-0.5', children: goalsA.map(e => el('div', { text: `⚽ ${e.minute}'`, className: 'text-[11px] text-accent font-medium' })) }),
+              el('div', { className: 'flex-1 flex flex-col gap-0.5 min-w-0', children: goalsA.map(e => el('div', { text: e.scorerName ? `⚽ ${e.minute}' ${e.scorerName}` : `⚽ ${e.minute}'`, className: 'text-[11px] text-accent font-medium truncate' })) }),
               el('div', { className: 'shrink-0 w-12' }),
-              el('div', { className: 'flex-1 flex flex-col gap-0.5 items-end', children: goalsB.map(e => el('div', { text: `⚽ ${e.minute}'`, className: 'text-[11px] text-live font-medium' })) }),
+              el('div', { className: 'flex-1 flex flex-col gap-0.5 items-end min-w-0', children: goalsB.map(e => el('div', { text: e.scorerName ? `${e.scorerName} ${e.minute}' ⚽` : `⚽ ${e.minute}'`, className: 'text-[11px] text-live font-medium truncate' })) }),
             ],
           }),
       el('div', {
@@ -742,9 +742,10 @@ function createGoalFeed(events, match) {
 
   const goalEntry = (e, side) => {
     const isA = side === 'A';
+    const label = e.scorerName ? `⚽ ${e.minute}' ${e.scorerName}` : `⚽ ${e.minute}'`;
     return el('div', {
-      className: `flex items-center gap-1 text-[11px] font-medium ${isA ? 'text-accent' : 'text-live justify-end'}`,
-      children: [el('span', { text: `⚽ ${e.minute}'` })],
+      className: `flex items-center gap-1 text-[11px] font-medium truncate ${isA ? 'text-accent' : 'text-live justify-end'}`,
+      children: [el('span', { text: label, className: 'truncate' })],
     });
   };
 

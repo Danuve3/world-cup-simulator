@@ -1,9 +1,13 @@
 import { el, flag, getEditionYear, createPenaltyDisplay } from '../components.js';
 import { getCompletedTournaments } from '../../engine/simulation.js';
 import { simulateTournament } from '../../engine/tournament.js';
+import { getSquadForEdition } from '../../engine/playerEvolution.js';
 
 // Persistent expanded state across re-renders
 const expandedMatchIds = new Set();
+
+// Track which team squad is expanded in detail view
+let expandedSquadTeam = null;
 
 /**
  * History view — Past World Cups.
@@ -139,6 +143,30 @@ function createHistoryCard(summary, onClick) {
                   }),
                 ],
               }) : null,
+              summary.topScorer ? el('div', {
+                children: [
+                  el('div', { text: 'Bota de Oro', className: 'text-[9px] text-yellow-500 dark:text-yellow-400 uppercase tracking-wider font-semibold' }),
+                  el('div', {
+                    className: 'flex items-center gap-1 mt-0.5',
+                    children: [
+                      el('span', { text: '\u26bd', className: 'text-[10px]' }),
+                      el('span', { text: `${summary.topScorer.player.name} (${summary.topScorer.goals})`, className: 'text-[10px] text-text-secondary truncate' }),
+                    ],
+                  }),
+                ],
+              }) : null,
+              summary.mvp ? el('div', {
+                children: [
+                  el('div', { text: 'Balón de Oro', className: 'text-[9px] text-yellow-500 dark:text-yellow-400 uppercase tracking-wider font-semibold' }),
+                  el('div', {
+                    className: 'flex items-center gap-1 mt-0.5',
+                    children: [
+                      el('span', { text: '\u2b50', className: 'text-[10px]' }),
+                      el('span', { text: summary.mvp.player.name, className: 'text-[10px] text-text-secondary truncate' }),
+                    ],
+                  }),
+                ],
+              }) : null,
               el('div', {
                 className: 'flex items-center gap-2 pt-1 border-t border-border-subtle',
                 children: [
@@ -170,29 +198,70 @@ function renderHistoryDetail(container, state, edition) {
   );
 
   const tournament = simulateTournament(edition);
+  expandedSquadTeam = null;
 
+  // Podium + awards card
   container.appendChild(
     el('div', {
-      className: 'card p-5 md:p-6 mb-6 text-center',
+      className: 'card p-5 md:p-6 mb-6',
       children: [
+        // Header
         el('div', {
-          className: 'flex items-center justify-center gap-3 mb-2',
+          className: 'flex items-center justify-center gap-3 mb-4',
           children: [
             flag(tournament.host.code, 28),
             el('h2', { text: `Mundial ${getEditionYear(edition)}`, className: 'text-lg font-bold' }),
           ],
         }),
+        // Podium
         el('div', {
-          className: 'flex items-end justify-center gap-4 md:gap-8 mt-4',
+          className: 'flex items-end justify-center gap-4 md:gap-8',
           children: [
             createMiniPodium('\ud83e\udd48', 'Subcampe\u00f3n', tournament.runnerUp),
             createMiniPodium('\ud83c\udfc6', 'Campe\u00f3n', tournament.champion, true),
             createMiniPodium('\ud83e\udd49', 'Tercero', tournament.thirdPlace),
           ],
         }),
+        // Awards row
+        el('div', {
+          className: 'flex gap-4 mt-5 pt-4 border-t border-border-subtle justify-center flex-wrap',
+          children: [
+            tournament.topScorer ? createAwardBadge(
+              '\u26bd Bota de Oro',
+              tournament.topScorer.player.name,
+              tournament.topScorer.player.teamCode,
+              `${tournament.topScorer.goals} goles`
+            ) : null,
+            tournament.mvp ? createAwardBadge(
+              '\u2b50 Balón de Oro',
+              tournament.mvp.player.name,
+              tournament.mvp.player.teamCode,
+              tournament.mvp.player.position === 'GK' ? 'Portero' :
+              tournament.mvp.player.position === 'DF' ? 'Defensa' :
+              tournament.mvp.player.position === 'MF' ? 'Centrocampista' : 'Delantero'
+            ) : null,
+          ].filter(Boolean),
+        }),
       ],
     })
   );
+
+  // Teams section — clickable to expand squad
+  container.appendChild(el('p', { text: 'Selecciones', className: 'section-title' }));
+  const teamsGrid = el('div', { className: 'grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-2 mb-6' });
+  const allTeams = tournament.draw.groups.flat();
+  for (const team of allTeams) {
+    teamsGrid.appendChild(createTeamPill(team, tournament, edition, container, state));
+  }
+  container.appendChild(teamsGrid);
+
+  // Show expanded squad if one is selected
+  if (expandedSquadTeam) {
+    const expandedTeam = allTeams.find(t => t.code === expandedSquadTeam);
+    if (expandedTeam) {
+      container.appendChild(createSquadModal(expandedTeam, tournament, edition));
+    }
+  }
 
   // Groups — full standings with matches
   container.appendChild(el('p', { text: 'Grupos', className: 'section-title' }));
@@ -271,9 +340,15 @@ function createMatchTimeline(m) {
         : el('div', {
             className: 'flex gap-2 mb-1',
             children: [
-              el('div', { className: 'flex-1 flex flex-col gap-0.5', children: goalsA.map(e => el('div', { text: `⚽ ${e.minute}'`, className: 'text-[10px] text-accent font-medium' })) }),
+              el('div', { className: 'flex-1 flex flex-col gap-0.5', children: goalsA.map(e => el('div', {
+                text: e.scorerName ? `⚽ ${e.minute}' ${e.scorerName}` : `⚽ ${e.minute}'`,
+                className: 'text-[10px] text-accent font-medium truncate',
+              })) }),
               el('div', { className: 'shrink-0 w-8' }),
-              el('div', { className: 'flex-1 flex flex-col gap-0.5 items-end', children: goalsB.map(e => el('div', { text: `⚽ ${e.minute}'`, className: 'text-[10px] text-live font-medium' })) }),
+              el('div', { className: 'flex-1 flex flex-col gap-0.5 items-end', children: goalsB.map(e => el('div', {
+                text: e.scorerName ? `${e.scorerName} ${e.minute}' ⚽` : `${e.minute}' ⚽`,
+                className: 'text-[10px] text-live font-medium truncate',
+              })) }),
             ],
           }),
       el('div', {
@@ -432,6 +507,102 @@ function createHistoryInlineMatch(m) {
     ],
   });
   return withExpandableTimeline(m, row);
+}
+
+function createAwardBadge(title, name, teamCode, sub) {
+  return el('div', {
+    className: 'flex flex-col items-center gap-1',
+    children: [
+      el('span', { text: title, className: 'text-[9px] uppercase tracking-wider font-bold text-yellow-500 dark:text-yellow-400' }),
+      el('div', { className: 'ring-1 ring-black/10 rounded overflow-hidden', children: [flag(teamCode, 24)] }),
+      el('span', { text: name, className: 'text-xs font-semibold text-text-primary text-center' }),
+      el('span', { text: sub, className: 'text-[9px] text-text-muted' }),
+    ],
+  });
+}
+
+const POS_SHORT_H = { GK: 'POR', DF: 'DEF', MF: 'MED', FW: 'DEL' };
+const POS_COLOR_H = {
+  GK: 'text-yellow-500 dark:text-yellow-400',
+  DF: 'text-blue-500 dark:text-blue-400',
+  MF: 'text-green-500 dark:text-green-400',
+  FW: 'text-red-500 dark:text-red-400',
+};
+const POS_ORDER_H = ['GK', 'DF', 'MF', 'FW'];
+
+function createTeamPill(team, tournament, edition, container, state) {
+  const pill = el('button', {
+    className: 'card card-interactive flex flex-col items-center gap-1.5 px-2 py-2 text-center',
+    events: {
+      click: () => {
+        if (expandedSquadTeam === team.code) {
+          expandedSquadTeam = null;
+          renderHistoryDetail(container, state, edition);
+        } else {
+          expandedSquadTeam = team.code;
+          renderHistoryDetail(container, state, edition);
+        }
+      },
+    },
+    children: [
+      flag(team.code, 32),
+      el('span', { text: team.name, className: 'text-[10px] text-text-secondary leading-tight line-clamp-2' }),
+    ],
+  });
+
+  return pill;
+}
+
+function createSquadModal(team, tournament, edition) {
+  const squad = getSquadForEdition(team.code, edition);
+  const playerStats = tournament.playerStats || {};
+  const sorted = [...squad].sort((a, b) => {
+    const po = POS_ORDER_H.indexOf(a.position) - POS_ORDER_H.indexOf(b.position);
+    return po !== 0 ? po : b.rating - a.rating;
+  });
+
+  const rows = sorted.map(player => {
+    const stats = playerStats[player.id] || { goals: 0, matches: 0, mins: 0 };
+    return el('div', {
+      className: 'flex items-center gap-2 px-3 py-1.5 hover:bg-bg-hover/40 text-xs',
+      children: [
+        el('span', { text: POS_SHORT_H[player.position], className: `w-7 shrink-0 font-bold ${POS_COLOR_H[player.position]}` }),
+        el('span', { text: player.name, className: 'flex-1 min-w-0 truncate' }),
+        el('span', { text: player.rating, className: 'w-6 text-right text-text-muted font-mono' }),
+        el('span', { text: player.age, className: 'w-5 text-right text-text-muted' }),
+        el('span', { text: stats.goals > 0 ? `⚽${stats.goals}` : '', className: 'w-8 text-right text-text-secondary font-medium' }),
+        el('span', { text: `${stats.mins}'`, className: 'w-10 text-right text-text-muted font-mono' }),
+      ],
+    });
+  });
+
+  return el('div', {
+    className: 'card overflow-hidden mb-4',
+    children: [
+      // Header
+      el('div', {
+        className: 'flex items-center gap-3 px-4 py-3 border-b border-border-subtle',
+        children: [
+          flag(team.code, 28),
+          el('span', { text: team.name, className: 'font-semibold text-sm' }),
+          el('span', { text: `Rating: ${team.rating}`, className: 'text-xs text-text-muted ml-1' }),
+        ],
+      }),
+      // Column headers
+      el('div', {
+        className: 'flex items-center gap-2 px-3 py-1.5 border-b border-border-subtle text-[10px] font-bold uppercase tracking-wider text-text-muted',
+        children: [
+          el('span', { text: 'Pos', className: 'w-7 shrink-0' }),
+          el('span', { text: 'Jugador', className: 'flex-1' }),
+          el('span', { text: 'Rtg', className: 'w-6 text-right' }),
+          el('span', { text: 'Edad', className: 'w-5 text-right' }),
+          el('span', { text: 'Goles', className: 'w-8 text-right' }),
+          el('span', { text: 'Mins', className: 'w-10 text-right' }),
+        ],
+      }),
+      ...rows,
+    ],
+  });
 }
 
 function createMiniPodium(emoji, label, team, isChamp = false) {

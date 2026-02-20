@@ -1,5 +1,7 @@
 import { createPRNG, combineSeed } from './prng.js';
 import { MATCH } from '../constants.js';
+import { POSITION_GOAL_WEIGHT } from './players.js';
+import { getSquadForEdition } from './playerEvolution.js';
 
 /**
  * Simulate a match minute by minute.
@@ -14,13 +16,17 @@ import { MATCH } from '../constants.js';
 export function simulateMatch(edition, matchId, teamA, teamB, allowDraw = true) {
   const rng = createPRNG(combineSeed('match', edition, matchId));
 
+  // Load squads for scorer attribution (deterministic per edition)
+  const squadA = getSquadForEdition(teamA.code, edition);
+  const squadB = getSquadForEdition(teamB.code, edition);
+
   const events = [];
   let goalsA = 0;
   let goalsB = 0;
 
   // Simulate regular time (90 min)
   for (let min = 1; min <= MATCH.REGULAR_MINUTES; min++) {
-    const result = simulateMinute(rng, min, teamA, teamB, goalsA, goalsB);
+    const result = simulateMinute(rng, min, teamA, teamB, goalsA, goalsB, squadA, squadB);
     if (result) {
       events.push(result);
       if (result.team === 'A') goalsA++;
@@ -35,7 +41,7 @@ export function simulateMatch(edition, matchId, teamA, teamB, allowDraw = true) 
   if (!allowDraw && goalsA === goalsB) {
     extraTime = true;
     for (let min = 91; min <= MATCH.REGULAR_MINUTES + MATCH.EXTRA_TIME_MINUTES; min++) {
-      const result = simulateMinute(rng, min, teamA, teamB, goalsA, goalsB);
+      const result = simulateMinute(rng, min, teamA, teamB, goalsA, goalsB, squadA, squadB);
       if (result) {
         events.push(result);
         if (result.team === 'A') goalsA++;
@@ -72,7 +78,7 @@ export function simulateMatch(edition, matchId, teamA, teamB, allowDraw = true) 
  * Simulate a single minute of play.
  * Returns a goal event or null.
  */
-function simulateMinute(rng, minute, teamA, teamB, goalsA, goalsB) {
+function simulateMinute(rng, minute, teamA, teamB, goalsA, goalsB, squadA, squadB) {
   const rA = teamA.rating;
   const rB = teamB.rating;
 
@@ -93,15 +99,32 @@ function simulateMinute(rng, minute, teamA, teamB, goalsA, goalsB) {
     const powerA = rA * rA * rA * rA;
     const powerB = rB * rB * rB * rB;
     const isTeamA = rng.nextBool(powerA / (powerA + powerB));
+    const scoringTeam = isTeamA ? 'A' : 'B';
+    const squad = isTeamA ? squadA : squadB;
+    const scorer = pickScorer(rng, squad);
+
     return {
       type: 'goal',
       minute,
-      team: isTeamA ? 'A' : 'B',
+      team: scoringTeam,
       teamCode: isTeamA ? teamA.code : teamB.code,
+      scorerId: scorer ? scorer.id : null,
+      scorerName: scorer ? scorer.name : null,
+      scorerPosition: scorer ? scorer.position : null,
     };
   }
 
   return null;
+}
+
+/**
+ * Pick a goal scorer from the squad using position × rating² weighting.
+ * FW >> MF >> DF >> GK (GK goals are astronomically rare but possible).
+ */
+function pickScorer(rng, squad) {
+  if (!squad || squad.length === 0) return null;
+  const weights = squad.map(p => POSITION_GOAL_WEIGHT[p.position] * p.rating * p.rating);
+  return rng.weightedSample(squad, weights);
 }
 
 /**

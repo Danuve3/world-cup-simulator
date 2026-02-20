@@ -131,6 +131,32 @@ export function renderStats(container, state) {
   if (stats.highestScoring && stats.highestScoring.length > 0) {
     container.appendChild(createMatchList('Partidos con m\u00e1s goles', stats.highestScoring.slice(0, 3)));
   }
+
+  // ── Player stats sections ──────────────────────────────────────────────────
+
+  // Most goals in a single World Cup (by player)
+  if (stats.topSingleEditionScorers && stats.topSingleEditionScorers.length > 0) {
+    container.appendChild(
+      el('p', { text: 'Más goles en un Mundial', className: 'section-title mt-2' })
+    );
+    container.appendChild(createPlayerEditionScorers(stats.topSingleEditionScorers));
+  }
+
+  // Most times MVP
+  if (stats.mvpRanking && stats.mvpRanking.length > 0) {
+    container.appendChild(
+      el('p', { text: 'Más veces Balón de Oro', className: 'section-title mt-2' })
+    );
+    container.appendChild(createMvpRanking(stats.mvpRanking.slice(0, 10)));
+  }
+
+  // All-time top scorers (top 5, expandable to 50)
+  if (stats.goalscorersRanking && stats.goalscorersRanking.length > 0) {
+    container.appendChild(
+      el('p', { text: 'Goleadores históricos', className: 'section-title mt-2' })
+    );
+    container.appendChild(createAllTimeScorers(stats.goalscorersRanking));
+  }
 }
 
 function toEntries(map) {
@@ -399,9 +425,15 @@ function createMatchDetail(m) {
         : el('div', {
             className: 'flex gap-2 mb-1',
             children: [
-              el('div', { className: 'flex-1 flex flex-col gap-0.5', children: goalsA.map(e => el('div', { text: `⚽ ${e.minute}'`, className: 'text-[10px] text-accent font-medium' })) }),
+              el('div', { className: 'flex-1 flex flex-col gap-0.5', children: goalsA.map(e => el('div', {
+                text: e.scorerName ? `⚽ ${e.minute}' ${e.scorerName}` : `⚽ ${e.minute}'`,
+                className: 'text-[10px] text-accent font-medium truncate',
+              })) }),
               el('div', { className: 'shrink-0 w-8' }),
-              el('div', { className: 'flex-1 flex flex-col gap-0.5 items-end', children: goalsB.map(e => el('div', { text: `⚽ ${e.minute}'`, className: 'text-[10px] text-live font-medium' })) }),
+              el('div', { className: 'flex-1 flex flex-col gap-0.5 items-end', children: goalsB.map(e => el('div', {
+                text: e.scorerName ? `${e.scorerName} ${e.minute}' ⚽` : `${e.minute}' ⚽`,
+                className: 'text-[10px] text-live font-medium truncate',
+              })) }),
             ],
           }),
       el('div', {
@@ -494,5 +526,169 @@ function createMatchList(title, wins) {
         }),
       }),
     ],
+  });
+}
+
+/**
+ * Top scorers in a single edition (player records).
+ */
+function createPlayerEditionScorers(entries) {
+  return el('div', {
+    className: 'card overflow-hidden mb-6',
+    children: [
+      el('div', {
+        className: 'flex items-center gap-1 px-4 py-2 border-b border-border-subtle text-[9px] font-bold uppercase tracking-wider text-text-muted',
+        children: [
+          el('span', { className: 'w-6 shrink-0' }),
+          el('span', { className: 'w-5 shrink-0' }),
+          el('span', { text: 'Jugador', className: 'flex-1' }),
+          el('span', { text: 'Selección', className: 'w-24 shrink-0 hidden sm:block' }),
+          el('span', { text: 'Edición', className: 'w-24 shrink-0 hidden md:block' }),
+          el('span', { text: 'Goles', className: 'w-12 text-right shrink-0' }),
+        ],
+      }),
+      ...entries.map((entry, i) => {
+        const year = getEditionYear(entry.edition);
+        return el('div', {
+          className: 'flex items-center gap-1 px-4 py-2 list-row',
+          children: [
+            el('span', { text: `${i + 1}`, className: `w-6 shrink-0 text-[10px] tabular-nums ${i < 3 ? 'text-accent font-bold' : 'text-text-muted'}` }),
+            flag(entry.player.teamCode, 18),
+            el('span', { text: entry.player.name, className: 'flex-1 min-w-0 text-xs truncate font-medium' }),
+            el('span', { text: entry.host ? entry.host.name : '', className: 'w-24 shrink-0 text-xs text-text-muted truncate hidden sm:block' }),
+            el('span', { text: `${year}`, className: 'w-24 shrink-0 text-xs text-text-muted hidden md:block' }),
+            el('span', { text: String(entry.goals), className: 'w-12 text-right shrink-0 text-accent font-bold tabular-nums text-sm' }),
+          ],
+        });
+      }),
+    ],
+  });
+}
+
+/**
+ * Players with most MVP awards (Balón de Oro).
+ */
+function createMvpRanking(entries) {
+  return el('div', {
+    className: 'card overflow-hidden mb-6',
+    children: [
+      el('div', {
+        className: 'flex items-center gap-1 px-4 py-2 border-b border-border-subtle text-[9px] font-bold uppercase tracking-wider text-text-muted',
+        children: [
+          el('span', { className: 'w-6 shrink-0' }),
+          el('span', { className: 'w-5 shrink-0' }),
+          el('span', { text: 'Jugador', className: 'flex-1' }),
+          el('span', { text: 'Selección', className: 'w-28 shrink-0 hidden sm:block' }),
+          el('span', { text: 'Veces', className: 'w-12 text-right shrink-0' }),
+        ],
+      }),
+      ...entries.map((entry, i) =>
+        el('div', {
+          className: 'flex items-center gap-1 px-4 py-2 list-row',
+          children: [
+            el('span', { text: `${i + 1}`, className: `w-6 shrink-0 text-[10px] tabular-nums ${i < 3 ? 'text-accent font-bold' : 'text-text-muted'}` }),
+            flag(entry.player.teamCode, 18),
+            el('div', {
+              className: 'flex-1 min-w-0',
+              children: [
+                el('div', { text: entry.player.name, className: 'text-xs font-medium truncate' }),
+                el('div', { text: `Ediciones: ${entry.editions.map(getEditionYear).join(', ')}`, className: 'text-[9px] text-text-muted truncate' }),
+              ],
+            }),
+            el('span', { text: entry.player.teamCode.toUpperCase(), className: 'w-28 shrink-0 text-xs text-text-muted truncate hidden sm:block' }),
+            el('span', {
+              className: 'w-12 text-right shrink-0 flex items-center justify-end gap-1',
+              children: [
+                el('span', { text: '\u2b50', className: 'text-[11px]' }),
+                el('span', { text: String(entry.count), className: 'text-accent font-bold tabular-nums text-sm' }),
+              ],
+            }),
+          ],
+        })
+      ),
+    ],
+  });
+}
+
+/**
+ * All-time historical top scorers (top 5 default, expandable to 50).
+ */
+function createAllTimeScorers(allEntries) {
+  const VISIBLE = 5;
+  const MAX = Math.min(50, allEntries.length);
+  const SECTION_KEY = 'goalscorers-all-time';
+  const expanded = expandedSections.has(SECTION_KEY);
+
+  const entries = expanded ? allEntries.slice(0, MAX) : allEntries.slice(0, VISIBLE);
+  const hasMore = allEntries.length > VISIBLE;
+
+  const chevronDown = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6,9 12,15 18,9"/></svg>';
+  const chevronUp = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18,15 12,9 6,15"/></svg>';
+
+  function createRow(entry, i) {
+    const topN = entry.totalGoals;
+    return el('div', {
+      className: 'flex items-center gap-1 px-4 py-2 list-row',
+      children: [
+        el('span', { text: `${i + 1}`, className: `w-6 shrink-0 text-[10px] tabular-nums ${i < 3 ? 'text-accent font-bold' : 'text-text-muted'}` }),
+        flag(entry.player.teamCode, 18),
+        el('div', {
+          className: 'flex-1 min-w-0',
+          children: [
+            el('div', { text: entry.player.name, className: 'text-xs font-medium truncate' }),
+            el('div', {
+              text: `${entry.editions.length} mundial${entry.editions.length !== 1 ? 'es' : ''}`,
+              className: 'text-[9px] text-text-muted',
+            }),
+          ],
+        }),
+        el('span', { text: String(topN), className: 'w-12 text-right shrink-0 text-accent font-bold tabular-nums text-sm' }),
+      ],
+    });
+  }
+
+  const rowsContainer = el('div', { children: entries.map((e, i) => createRow(e, i)) });
+
+  const chevronEl = hasMore ? el('span', {
+    html: expanded ? chevronUp : chevronDown,
+    className: 'text-text-muted w-4 h-4',
+  }) : null;
+
+  return el('div', {
+    className: 'card overflow-hidden mb-6',
+    children: [
+      // Header row
+      el('div', {
+        className: `px-4 py-2.5 border-b border-border-default flex items-center justify-between ${hasMore ? 'cursor-pointer' : ''}`,
+        events: hasMore ? {
+          click: () => {
+            const nowExpanded = !expandedSections.has(SECTION_KEY);
+            if (nowExpanded) expandedSections.add(SECTION_KEY);
+            else expandedSections.delete(SECTION_KEY);
+            const vis = nowExpanded ? allEntries.slice(0, MAX) : allEntries.slice(0, VISIBLE);
+            rowsContainer.innerHTML = '';
+            vis.forEach((e, i) => rowsContainer.appendChild(createRow(e, i)));
+            if (chevronEl) chevronEl.innerHTML = nowExpanded ? chevronUp : chevronDown;
+          },
+        } : {},
+        children: [
+          el('div', {
+            className: 'flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-text-muted',
+            children: [
+              el('span', { className: 'w-6 shrink-0' }),
+              el('span', { className: 'w-5 shrink-0' }),
+              el('span', { text: 'Jugador', className: 'flex-1' }),
+              el('span', { text: 'Goles totales', className: 'w-24 text-right shrink-0' }),
+            ],
+          }),
+          chevronEl,
+        ].filter(Boolean),
+      }),
+      rowsContainer,
+      hasMore ? el('div', {
+        className: 'px-4 py-2 text-center text-[10px] text-text-muted border-t border-border-subtle',
+        text: expanded ? `Mostrando top ${MAX}` : `Mostrando top ${VISIBLE} de ${allEntries.length} — pulsa para ver top ${MAX}`,
+      }) : null,
+    ].filter(Boolean),
   });
 }

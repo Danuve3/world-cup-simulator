@@ -187,6 +187,11 @@ export function getStats(timestamp) {
   let totalMatches = 0;
   let penaltyShootouts = 0;
 
+  // Player stats aggregation
+  const allTimeGoalscorers = {}; // playerId → { player, totalGoals, editions: [] }
+  const allTimeMvps = {};        // playerId → { player, count, editions: [] }
+  const topScorersByEdition = []; // { edition, player, goals, host }
+
   for (let i = 0; i < edition; i++) {
     const t = simulateTournament(i);
 
@@ -282,11 +287,60 @@ export function getStats(timestamp) {
         fewestGoalsTeam = { edition: i, team, goals };
       }
     }
+
+    // Player stats
+    if (t.playerStats) {
+      for (const entry of Object.values(t.playerStats)) {
+        if (entry.goals > 0) {
+          const pid = entry.player.id;
+          if (!allTimeGoalscorers[pid]) {
+            allTimeGoalscorers[pid] = { player: entry.player, totalGoals: 0, editions: [] };
+          }
+          allTimeGoalscorers[pid].totalGoals += entry.goals;
+          allTimeGoalscorers[pid].editions.push({ edition: i, goals: entry.goals });
+        }
+      }
+    }
+
+    // Top scorer record per edition
+    if (t.topScorer) {
+      topScorersByEdition.push({
+        edition: i,
+        host: t.host,
+        player: t.topScorer.player,
+        goals: t.topScorer.goals,
+      });
+    }
+
+    // MVP records
+    if (t.mvp) {
+      const pid = t.mvp.player.id;
+      if (!allTimeMvps[pid]) {
+        allTimeMvps[pid] = { player: t.mvp.player, count: 0, editions: [] };
+      }
+      allTimeMvps[pid].count++;
+      allTimeMvps[pid].editions.push(i);
+    }
   }
+
+  // Build sorted lists
+  const goalscorersRanking = Object.values(allTimeGoalscorers)
+    .sort((a, b) => b.totalGoals - a.totalGoals);
+
+  const mvpRanking = Object.values(allTimeMvps)
+    .sort((a, b) => b.count - a.count);
+
+  // Most goals in a single edition (from topScorersByEdition)
+  const topSingleEditionScorers = [...topScorersByEdition]
+    .sort((a, b) => b.goals - a.goals)
+    .slice(0, 10);
 
   return {
     titles,
     participations,
+    goalscorersRanking,
+    mvpRanking,
+    topSingleEditionScorers,
     totalGoals,
     maxGoalsTournament,
     minGoalsTournament: minGoalsTournament.edition >= 0 ? minGoalsTournament : null,
