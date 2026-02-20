@@ -191,6 +191,8 @@ export function getStats(timestamp) {
   const allTimeGoalscorers = {}; // playerId → { player, totalGoals, editions: [] }
   const allTimeMvps = {};        // playerId → { player, count, editions: [] }
   const topScorersByEdition = []; // { edition, player, goals, host }
+  const allTimeMins = {};        // playerId → { player, totalMins }
+  let mostGoalsInMatch = null;   // { player, goals, match, edition }
 
   for (let i = 0; i < edition; i++) {
     const t = simulateTournament(i);
@@ -291,13 +293,39 @@ export function getStats(timestamp) {
     // Player stats
     if (t.playerStats) {
       for (const entry of Object.values(t.playerStats)) {
+        const pid = entry.player.id;
         if (entry.goals > 0) {
-          const pid = entry.player.id;
           if (!allTimeGoalscorers[pid]) {
             allTimeGoalscorers[pid] = { player: entry.player, totalGoals: 0, editions: [] };
           }
           allTimeGoalscorers[pid].totalGoals += entry.goals;
           allTimeGoalscorers[pid].editions.push({ edition: i, goals: entry.goals });
+        }
+        if (entry.mins > 0) {
+          if (!allTimeMins[pid]) {
+            allTimeMins[pid] = { player: entry.player, totalMins: 0 };
+          }
+          allTimeMins[pid].totalMins += entry.mins;
+        }
+      }
+    }
+
+    // Most goals in a single match (by player)
+    for (const m of allMatches) {
+      if (!m.events) continue;
+      const perPlayer = {};
+      for (const e of m.events) {
+        if (e.type === 'goal' && e.scorerId) {
+          perPlayer[e.scorerId] = (perPlayer[e.scorerId] || 0) + 1;
+        }
+      }
+      for (const [pid, goals] of Object.entries(perPlayer)) {
+        if (!mostGoalsInMatch || goals > mostGoalsInMatch.goals) {
+          // Find the player object from playerStats
+          const entry = t.playerStats?.[pid];
+          if (entry) {
+            mostGoalsInMatch = { player: entry.player, goals, match: m, edition: i };
+          }
         }
       }
     }
@@ -335,12 +363,18 @@ export function getStats(timestamp) {
     .sort((a, b) => b.goals - a.goals)
     .slice(0, 10);
 
+  // Most minutes played all-time
+  const mostMinsPlayer = Object.values(allTimeMins)
+    .sort((a, b) => b.totalMins - a.totalMins)[0] ?? null;
+
   return {
     titles,
     participations,
     goalscorersRanking,
     mvpRanking,
     topSingleEditionScorers,
+    mostGoalsInMatch,
+    mostMinsPlayer,
     totalGoals,
     maxGoalsTournament,
     minGoalsTournament: minGoalsTournament.edition >= 0 ? minGoalsTournament : null,

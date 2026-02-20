@@ -107,12 +107,25 @@ export function renderStats(container, state) {
       topMvp.player.teamCode,
       topMvp.player.name,
     ) : null,
+    stats.mostGoalsInMatch ? createRecordCard(
+      'Más goles en un partido',
+      String(stats.mostGoalsInMatch.goals),
+      stats.mostGoalsInMatch.player.teamCode,
+      stats.mostGoalsInMatch.player.name,
+      getEditionYear(stats.mostGoalsInMatch.edition),
+    ) : null,
+    stats.mostMinsPlayer ? createRecordCard(
+      'Más minutos jugados',
+      String(stats.mostMinsPlayer.totalMins),
+      stats.mostMinsPlayer.player.teamCode,
+      stats.mostMinsPlayer.player.name,
+    ) : null,
   ].filter(Boolean);
 
   if (records.length > 0) {
     container.appendChild(
       el('div', {
-        className: 'grid grid-cols-2 md:grid-cols-3 gap-3 mb-6',
+        className: 'grid grid-cols-2 md:grid-cols-4 gap-3 mb-6',
         children: records,
       })
     );
