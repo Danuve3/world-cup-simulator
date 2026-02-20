@@ -140,7 +140,7 @@ function createSquadTable(squad, playerStats) {
         el('span', { text: player.rating, className: 'w-6 text-right text-text-muted font-mono' }),
         el('span', { text: player.age, className: 'w-6 text-right text-text-muted' }),
         el('span', {
-          text: stats.goals > 0 ? `⚽${stats.goals}` : '',
+          text: stats.goals > 0 ? String(stats.goals) : '',
           className: 'w-8 text-right text-text-secondary font-medium',
         }),
         el('span', { text: `${stats.mins}'`, className: 'w-10 text-right text-text-muted font-mono' }),
