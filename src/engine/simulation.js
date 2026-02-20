@@ -191,7 +191,7 @@ export function getStats(timestamp) {
   const allTimeGoalscorers = {}; // playerId → { player, totalGoals, editions: [] }
   const allTimeMvps = {};        // playerId → { player, count, editions: [] }
   const topScorersByEdition = []; // { edition, player, goals, host }
-  const allTimeMins = {};        // playerId → { player, totalMins }
+  const allTimeEditions = {};    // playerId → { player, count }
   let mostGoalsInMatch = null;   // { player, goals, match, edition }
 
   for (let i = 0; i < edition; i++) {
@@ -302,10 +302,10 @@ export function getStats(timestamp) {
           allTimeGoalscorers[pid].editions.push({ edition: i, goals: entry.goals });
         }
         if (entry.mins > 0) {
-          if (!allTimeMins[pid]) {
-            allTimeMins[pid] = { player: entry.player, totalMins: 0 };
+          if (!allTimeEditions[pid]) {
+            allTimeEditions[pid] = { player: entry.player, count: 0 };
           }
-          allTimeMins[pid].totalMins += entry.mins;
+          allTimeEditions[pid].count++;
         }
       }
     }
@@ -363,9 +363,9 @@ export function getStats(timestamp) {
     .sort((a, b) => b.goals - a.goals)
     .slice(0, 10);
 
-  // Most minutes played all-time
-  const mostMinsPlayer = Object.values(allTimeMins)
-    .sort((a, b) => b.totalMins - a.totalMins)[0] ?? null;
+  // Most editions played
+  const mostEditionsPlayer = Object.values(allTimeEditions)
+    .sort((a, b) => b.count - a.count)[0] ?? null;
 
   return {
     titles,
@@ -374,7 +374,7 @@ export function getStats(timestamp) {
     mvpRanking,
     topSingleEditionScorers,
     mostGoalsInMatch,
-    mostMinsPlayer,
+    mostEditionsPlayer,
     totalGoals,
     maxGoalsTournament,
     minGoalsTournament: minGoalsTournament.edition >= 0 ? minGoalsTournament : null,

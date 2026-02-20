@@ -114,11 +114,11 @@ export function renderStats(container, state) {
       stats.mostGoalsInMatch.player.name,
       getEditionYear(stats.mostGoalsInMatch.edition),
     ) : null,
-    stats.mostMinsPlayer ? createRecordCard(
-      'Más minutos jugados',
-      String(stats.mostMinsPlayer.totalMins),
-      stats.mostMinsPlayer.player.teamCode,
-      stats.mostMinsPlayer.player.name,
+    stats.mostEditionsPlayer ? createRecordCard(
+      'Más ediciones jugadas',
+      String(stats.mostEditionsPlayer.count),
+      stats.mostEditionsPlayer.player.teamCode,
+      stats.mostEditionsPlayer.player.name,
     ) : null,
   ].filter(Boolean);
 
