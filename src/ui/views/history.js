@@ -6,7 +6,7 @@ import { getSquadForEdition } from '../../engine/playerEvolution.js';
 // Persistent expanded state across re-renders
 const expandedMatchIds = new Set();
 
-// Track which team squad is expanded in detail view
+// Track which team squad is expanded in detail view (for DOM toggling)
 let expandedSquadTeam = null;
 
 /**
@@ -246,22 +246,56 @@ function renderHistoryDetail(container, state, edition) {
     })
   );
 
-  // Teams section — clickable to expand squad
+  // Teams section — clickable pills that toggle a squad panel inline
   container.appendChild(el('p', { text: 'Selecciones', className: 'section-title' }));
-  const teamsGrid = el('div', { className: 'grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-2 mb-6' });
   const allTeams = tournament.draw.groups.flat();
-  for (const team of allTeams) {
-    teamsGrid.appendChild(createTeamPill(team, tournament, edition, container, state));
-  }
-  container.appendChild(teamsGrid);
+  expandedSquadTeam = null;
 
-  // Show expanded squad if one is selected
-  if (expandedSquadTeam) {
-    const expandedTeam = allTeams.find(t => t.code === expandedSquadTeam);
-    if (expandedTeam) {
-      container.appendChild(createSquadModal(expandedTeam, tournament, edition));
-    }
+  // Shared squad panel that swaps content without re-rendering the page
+  const squadPanel = el('div', { className: 'mb-4' });
+  squadPanel.style.display = 'none';
+
+  const teamsGrid = el('div', { className: 'grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-2 mb-3' });
+
+  // Track the active pill button for highlight toggling
+  const pillButtons = new Map(); // teamCode → button el
+
+  for (const team of allTeams) {
+    const pill = el('button', {
+      className: 'card card-interactive flex flex-col items-center gap-1.5 px-2 py-2 text-center transition-all',
+      children: [
+        flag(team.code, 32),
+        el('span', { text: team.name, className: 'text-[10px] text-text-secondary leading-tight line-clamp-2' }),
+      ],
+      events: {
+        click: () => {
+          if (expandedSquadTeam === team.code) {
+            // Collapse
+            expandedSquadTeam = null;
+            squadPanel.style.display = 'none';
+            pill.classList.remove('ring-2', 'ring-accent');
+          } else {
+            // Deselect previous
+            if (expandedSquadTeam) {
+              pillButtons.get(expandedSquadTeam)?.classList.remove('ring-2', 'ring-accent');
+            }
+            expandedSquadTeam = team.code;
+            squadPanel.innerHTML = '';
+            squadPanel.appendChild(createSquadModal(team, tournament, edition));
+            squadPanel.style.display = 'block';
+            pill.classList.add('ring-2', 'ring-accent');
+            // Scroll squad panel into view smoothly
+            squadPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }
+        },
+      },
+    });
+    pillButtons.set(team.code, pill);
+    teamsGrid.appendChild(pill);
   }
+
+  container.appendChild(teamsGrid);
+  container.appendChild(squadPanel);
 
   // Groups — full standings with matches
   container.appendChild(el('p', { text: 'Grupos', className: 'section-title' }));
@@ -530,28 +564,6 @@ const POS_COLOR_H = {
 };
 const POS_ORDER_H = ['GK', 'DF', 'MF', 'FW'];
 
-function createTeamPill(team, tournament, edition, container, state) {
-  const pill = el('button', {
-    className: 'card card-interactive flex flex-col items-center gap-1.5 px-2 py-2 text-center',
-    events: {
-      click: () => {
-        if (expandedSquadTeam === team.code) {
-          expandedSquadTeam = null;
-          renderHistoryDetail(container, state, edition);
-        } else {
-          expandedSquadTeam = team.code;
-          renderHistoryDetail(container, state, edition);
-        }
-      },
-    },
-    children: [
-      flag(team.code, 32),
-      el('span', { text: team.name, className: 'text-[10px] text-text-secondary leading-tight line-clamp-2' }),
-    ],
-  });
-
-  return pill;
-}
 
 function createSquadModal(team, tournament, edition) {
   const squad = getSquadForEdition(team.code, edition);
