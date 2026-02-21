@@ -411,7 +411,7 @@ export function getStats(timestamp) {
   // Build sorted lists
 
   const goalscorersRanking = Object.values(allTimeGoalscorers)
-    .sort((a, b) => b.totalGoals - a.totalGoals);
+    .sort((a, b) => b.totalGoals - a.totalGoals || b.player.rating - a.player.rating);
 
   const mvpRanking = Object.values(allTimeMvps)
     .sort((a, b) => b.count - a.count);
@@ -775,7 +775,7 @@ export function getLiveStats(timestamp) {
     }
   }
   const liveGoalscorersRanking = Object.values(mergedGoalscorers)
-    .sort((a, b) => b.totalGoals - a.totalGoals);
+    .sort((a, b) => b.totalGoals - a.totalGoals || b.player.rating - a.player.rating);
 
   // Merge current edition top scorer into topSingleEditionScorers — from played matches only
   const liveTopSingleEditionScorers = [...(baseStats.topSingleEditionScorers || [])];
