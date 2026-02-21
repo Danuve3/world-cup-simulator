@@ -69,12 +69,14 @@ tickInterval = setInterval(() => {
     renderDashboard(mainContainer, currentState);
   }
 
-  // Groups and stats refresh every tick when there are live matches
-  const liveRendered = hasLiveMatches && mainContainer && (currentView === 'groups' || currentView === 'stats');
+  // Groups, stats, and teams refresh every tick when there are live matches
+  const liveRendered = hasLiveMatches && mainContainer &&
+    (currentView === 'groups' || currentView === 'stats' || currentView === 'teams');
   if (liveRendered) {
     currentState = newState;
     if (currentView === 'groups') renderGroups(mainContainer, currentState);
-    else renderStats(mainContainer, currentState);
+    else if (currentView === 'stats') renderStats(mainContainer, currentState);
+    else if (currentView === 'teams') renderTeams(mainContainer, currentState);
   }
 
   if (!minuteChanged && !phaseChanged && !editionChanged) return;

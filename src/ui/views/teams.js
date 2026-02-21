@@ -1,6 +1,7 @@
 import { el, flag, getEditionYear } from '../components.js';
 import { getSquadForEdition } from '../../engine/playerEvolution.js';
 import { POSITION_GOAL_WEIGHT } from '../../engine/players.js';
+import { computeCurrentPlayerStats } from '../../engine/simulation.js';
 
 // Position labels
 const POS_LABEL = { GK: 'Portero', DF: 'Defensa', MF: 'Centrocampista', FW: 'Delantero' };
@@ -61,13 +62,19 @@ export function renderTeams(container, state) {
 
   // Build list of teams from the current edition's draw
   const teams = tournament.draw.groups.flat();
-  const playerStats = tournament.playerStats || {};
+
+  // Pre-compute live stats only for the expanded team (avoid computing for all 32)
+  let expandedTeamStats = null;
+  if (expandedTeam) {
+    expandedTeamStats = computeCurrentPlayerStats(expandedTeam, edition, state.cycleMinute, tournament);
+  }
 
   const grid = el('div', { className: 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3' });
 
   for (const team of teams) {
     const squad = getSquadForEdition(team.code, edition);
-    const card = createTeamCard(team, squad, playerStats, edition, () => {
+    const liveStats = (expandedTeam === team.code && expandedTeamStats) ? expandedTeamStats : null;
+    const card = createTeamCard(team, squad, liveStats, edition, () => {
       if (expandedTeam === team.code) {
         expandedTeam = null;
       } else {
@@ -111,7 +118,7 @@ function createTeamCard(team, squad, playerStats, edition, onToggle) {
   const children = [header];
 
   if (isExpanded) {
-    const squadTable = createSquadTable(sortedSquad, playerStats);
+    const squadTable = createSquadTable(sortedSquad, playerStats || {});
     children.push(el('div', {
       className: 'border-t border-border-subtle',
       children: [squadTable],
