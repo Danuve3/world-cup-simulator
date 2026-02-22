@@ -15,14 +15,21 @@ const YEARS_PER_EDITION = 4;
 
 /**
  * Probability of retirement based on age at the time of the new edition.
+ * Thresholds are set so no player ever appears in a squad older than 37:
+ *   age ≥ 38 → guaranteed retirement (newAge = prevAge + 4, so 34 → 38 → gone)
+ *   age = 37 → 85 % retire  →  rare survivors are realistic (Maldini, Buffon tier)
+ *   age = 35–36 → 45 % retire → possible veterans
+ *   age = 33–34 → 18 % retire → experienced regulars
+ *   age = 31–32 →  6 % retire → prime players rarely leave early
+ *   else       →  2 % retire → injury / surprise retirement
  */
 function retirementProbability(age) {
-  if (age >= 40) return 1.0;
-  if (age >= 37) return 0.80;
-  if (age >= 35) return 0.40;
-  if (age >= 33) return 0.15;
-  if (age >= 31) return 0.05;
-  return 0.02; // injury / surprise retirement for younger players
+  if (age >= 38) return 1.0;
+  if (age >= 36) return 0.85;
+  if (age >= 34) return 0.45;
+  if (age >= 32) return 0.18;
+  if (age >= 30) return 0.06;
+  return 0.02;
 }
 
 /**
@@ -60,7 +67,7 @@ function generateReplacement(rng, teamCode, position, slotIndex, pool, teamRatin
   const minRating = Math.max(25, teamRating - 30);
   const maxRating = Math.max(minRating + 5, teamRating - 8);
   const rating = rng.nextInt(minRating, maxRating);
-  const age = rng.nextInt(18, 23);
+  const age = Math.max(18, rng.nextInt(18, 23));
 
   return {
     id: `${teamCode}-slot${slotIndex}-gen${Math.floor(rng.next() * 9999)}`,

@@ -932,9 +932,11 @@ function generateRating(rng, teamRating, slotIndex, hasException, exceptionSlot)
  */
 function generateAge(rng, position, slotIndex) {
   if (position === 'GK') {
+    // GK1: experienced starter; GK2: backup; GK3: young prospect
+    // Cap GK1 at 33 so they retire before becoming 37 (max realistic age)
     const ranges = [[26, 33], [23, 31], [18, 24]];
     const [min, max] = ranges[slotIndex] || [20, 28];
-    return rng.nextInt(min, max);
+    return Math.max(18, rng.nextInt(min, max));
   }
 
   // Compute position-local index (0 = best, n-1 = worst in group)
@@ -944,10 +946,11 @@ function generateAge(rng, position, slotIndex) {
   else posIndex = slotIndex - 19; // FW
 
   // Starters: prime age; reserves: mix of young prospects and veterans
-  if (posIndex === 0) return rng.nextInt(24, 32); // undisputed starter
-  if (posIndex <= 2) return rng.nextInt(22, 31);  // regular starter
-  if (posIndex <= 4) return rng.nextInt(20, 29);  // rotation
-  return rng.nextInt(18, 27);                      // bench
+  // Clamp ensures no player starts above 34 (would retire before 2nd edition)
+  if (posIndex === 0) return Math.min(34, rng.nextInt(24, 32)); // undisputed starter
+  if (posIndex <= 2) return Math.min(33, rng.nextInt(22, 31));  // regular starter
+  if (posIndex <= 4) return Math.min(30, rng.nextInt(20, 29));  // rotation
+  return Math.max(18, Math.min(27, rng.nextInt(18, 27)));       // bench
 }
 
 /**
