@@ -227,9 +227,22 @@ export function getMatchLineup(squad, teamCode, edition, matchId) {
   const mfs = squad.filter(p => p.position === 'MF').sort((a, b) => b.rating - a.rating);
   const fws = squad.filter(p => p.position === 'FW').sort((a, b) => b.rating - a.rating);
 
+  // GK rotation: GK1 starts most matches, GK2 occasionally, GK3 rarely.
+  // Simulates dead-rubber group games and cup rotations.
+  //   0–0.83 → GK1 starts  (~83 %)
+  //   0.83–0.96 → GK2 starts (~13 %)
+  //   0.96–1.00 → GK3 starts  (~4 %)
+  const gkRoll = rng.next();
+  const startGKIdx =
+    gks.length >= 3 && gkRoll >= 0.96 ? 2 :
+    gks.length >= 2 && gkRoll >= 0.83 ? 1 :
+    0;
+  const startingGK = gks[startGKIdx];
+  const benchGKs = gks.filter((_, i) => i !== startGKIdx);
+
   // Starting XI: 1 GK + 4 DF + 4 MF + 2 FW
   const starters = [
-    ...gks.slice(0, 1),
+    startingGK,
     ...dfs.slice(0, 4),
     ...mfs.slice(0, 4),
     ...fws.slice(0, 2),
@@ -237,16 +250,16 @@ export function getMatchLineup(squad, teamCode, edition, matchId) {
 
   // Bench: the remaining 14 players
   const bench = [
-    ...gks.slice(1),
+    ...benchGKs,
     ...dfs.slice(4),
     ...mfs.slice(4),
     ...fws.slice(2),
   ];
 
   // Pick up to 5 sub candidates weighted by rating².
-  // GK bench weight is 2% of an outfield player's — they almost never come on.
+  // GK bench weight is 6% of an outfield player's — very rarely come on mid-match.
   const benchWeights = bench.map(p =>
-    p.position === 'GK' ? p.rating * p.rating * 0.02 : p.rating * p.rating
+    p.position === 'GK' ? p.rating * p.rating * 0.06 : p.rating * p.rating
   );
   const numSubs = Math.min(5, bench.length);
   const subCandidates = [];
