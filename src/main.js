@@ -62,6 +62,8 @@ tickInterval = setInterval(() => {
   const minuteChanged = newState.cycleMinute !== lastMinute;
   const editionChanged = newState.edition !== lastEdition;
   const hasLiveMatches = newState.liveMatches && newState.liveMatches.length > 0;
+  // Force a render on the tick where the last live match ends
+  const matchesJustEnded = (currentState?.liveMatches?.length > 0) && !hasLiveMatches;
 
   // Dashboard always refreshes every second (for live countdowns)
   if (currentView === 'dashboard' && mainContainer) {
@@ -69,14 +71,19 @@ tickInterval = setInterval(() => {
     renderDashboard(mainContainer, currentState);
   }
 
-  // Groups, stats, and teams refresh every tick when there are live matches
-  const liveRendered = hasLiveMatches && mainContainer &&
-    (currentView === 'groups' || currentView === 'stats' || currentView === 'teams');
+  // Groups, bracket, stats and teams refresh every tick while matches are live,
+  // and once more on the tick they end so the final result appears immediately.
+  const liveRendered = mainContainer && (hasLiveMatches || matchesJustEnded) &&
+    (currentView === 'groups' || currentView === 'bracket' ||
+     currentView === 'stats' || currentView === 'teams');
   if (liveRendered) {
     currentState = newState;
-    if (currentView === 'groups') renderGroups(mainContainer, currentState);
-    else if (currentView === 'stats') renderStats(mainContainer, currentState);
-    else if (currentView === 'teams') renderTeams(mainContainer, currentState);
+    switch (currentView) {
+      case 'groups':  renderGroups(mainContainer, currentState);  break;
+      case 'bracket': renderBracket(mainContainer, currentState); break;
+      case 'stats':   renderStats(mainContainer, currentState);   break;
+      case 'teams':   renderTeams(mainContainer, currentState);   break;
+    }
   }
 
   if (!minuteChanged && !phaseChanged && !editionChanged) return;
@@ -89,20 +96,13 @@ tickInterval = setInterval(() => {
   updateHeader(currentState);
   updateNav();
 
-  if ((phaseChanged || minuteChanged) && currentView !== 'dashboard' && !liveRendered) {
+  // Re-render non-dashboard views on phase/minute change, unless already refreshed above
+  if (currentView !== 'dashboard' && !liveRendered) {
     switch (currentView) {
-      case 'groups':
-        renderGroups(mainContainer, currentState);
-        break;
-      case 'bracket':
-        renderBracket(mainContainer, currentState);
-        break;
-      case 'stats':
-        renderStats(mainContainer, currentState);
-        break;
+      case 'groups':  renderGroups(mainContainer, currentState);  break;
+      case 'bracket': renderBracket(mainContainer, currentState); break;
+      case 'stats':   renderStats(mainContainer, currentState);   break;
     }
-  } else if ((phaseChanged || minuteChanged) && currentView === 'bracket') {
-    renderBracket(mainContainer, currentState);
   }
 }, 1000);
 
