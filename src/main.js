@@ -2,6 +2,7 @@ import './styles/main.css';
 import { createAppShell, updateHeader, updateNav } from './ui/app.js';
 import { route, initRouter, setOnRouteChange } from './ui/router.js';
 import { getCurrentState } from './engine/simulation.js';
+import { detectAndNotify } from './notifications.js';
 import { renderDashboard } from './ui/views/dashboard.js';
 import { renderGroups } from './ui/views/groups.js';
 import { renderBracket } from './ui/views/bracket.js';
@@ -59,7 +60,9 @@ let lastPhase = currentState.phase.phase;
 let lastMinute = currentState.cycleMinute;
 
 tickInterval = setInterval(() => {
+  const prevState = currentState;
   const newState = getCurrentState();
+  detectAndNotify(prevState, newState);
 
   const phaseChanged = newState.phase.phase !== lastPhase;
   const minuteChanged = newState.cycleMinute !== lastMinute;

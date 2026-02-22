@@ -1,5 +1,6 @@
 import { el, flag, getEditionYear } from './components.js';
 import { navigate, getCurrentRoute } from './router.js';
+import { getNotifPermission, requestNotifPermission, getNotifPrefs, setNotifPref } from '../notifications.js';
 
 const SUN_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
 const MOON_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
@@ -35,6 +36,42 @@ const NAV_ITEMS = [
   { path: '/history', label: 'Historial', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>' },
   { path: '/stats', label: 'Stats', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="12" width="4" height="8" rx="1"/><rect x="10" y="8" width="4" height="12" rx="1"/><rect x="17" y="4" width="4" height="16" rx="1"/></svg>' },
 ];
+
+const BELL_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+
+/**
+ * Sidebar notification button — updates itself in place when permission changes.
+ */
+function createNotifSidebarBtn() {
+  if (!('Notification' in window)) return null;
+
+  const btn = el('button', { className: 'nav-item w-full text-left' });
+
+  btn.addEventListener('click', async () => {
+    if (getNotifPermission() === 'default') {
+      await requestNotifPermission();
+      render();
+    }
+  });
+
+  function render() {
+    btn.innerHTML = '';
+    const perm = getNotifPermission();
+    btn.appendChild(el('span', { html: BELL_ICON, className: 'w-5 h-5 shrink-0' }));
+    if (perm === 'granted') {
+      btn.appendChild(el('span', { text: 'Notificaciones', className: 'text-sm flex-1' }));
+      btn.appendChild(el('span', { text: 'ON', className: 'text-[10px] font-bold text-accent ml-auto' }));
+    } else if (perm === 'denied') {
+      btn.appendChild(el('span', { text: 'Notificaciones', className: 'text-sm flex-1 text-text-muted' }));
+      btn.appendChild(el('span', { text: 'BLQ', className: 'text-[10px] font-bold text-live/60 ml-auto' }));
+    } else {
+      btn.appendChild(el('span', { text: 'Notificaciones', className: 'text-sm' }));
+    }
+  }
+
+  render();
+  return btn;
+}
 
 /**
  * Create the app shell.
@@ -105,6 +142,7 @@ function createSidebar() {
         id: 'sidebar-footer',
         className: 'px-3 py-3 text-xs text-text-muted border-t border-border-default mt-2',
       }),
+      createNotifSidebarBtn(),
       el('button', {
         className: 'nav-item w-full text-left mt-1',
         events: { click: toggleTheme },
@@ -196,6 +234,71 @@ function closeMenu() {
   setTimeout(() => { menuPanelEl?.remove(); menuPanelEl = null; }, 260);
 }
 
+function buildNotifMenuSection() {
+  if (!('Notification' in window)) return null;
+
+  const perm = getNotifPermission();
+  const sectionStyle = { padding: '8px 12px', borderBottom: '1px solid var(--color-border-subtle)' };
+  const labelStyle = { fontSize: '11px', fontWeight: '700', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px', padding: '4px 8px 0' };
+
+  if (perm === 'denied') {
+    return el('div', { style: sectionStyle, children: [
+      el('p', { text: 'NOTIFICACIONES', style: labelStyle }),
+      el('p', { text: '🔕 Bloqueadas en el navegador', style: { fontSize: '12px', color: 'var(--color-text-muted)', padding: '4px 8px 8px' } }),
+    ] });
+  }
+
+  if (perm === 'default') {
+    return el('div', { style: sectionStyle, children: [
+      el('button', {
+        style: { display: 'flex', alignItems: 'center', gap: '12px', width: '100%', padding: '10px 8px', borderRadius: '10px', cursor: 'pointer', textAlign: 'left' },
+        events: { click: async () => { await requestNotifPermission(); closeMenu(); } },
+        children: [
+          el('span', { html: BELL_ICON, style: { width: '20px', height: '20px', display: 'block', color: 'var(--color-text-secondary)', flexShrink: '0' } }),
+          el('div', { children: [
+            el('div', { text: 'Activar notificaciones', style: { fontSize: '14px', fontWeight: '500' } }),
+            el('div', { text: 'Goles, fin de partido y campeón', style: { fontSize: '11px', color: 'var(--color-text-muted)', marginTop: '1px' } }),
+          ] }),
+        ],
+      }),
+    ] });
+  }
+
+  // granted — show per-type toggles
+  const TYPES = [
+    { key: 'goals', label: '⚽ Goles' },
+    { key: 'matchEnd', label: '🏁 Fin de partido' },
+    { key: 'champion', label: '🏆 Campeón' },
+  ];
+
+  return el('div', { style: sectionStyle, children: [
+    el('p', { text: 'NOTIFICACIONES', style: labelStyle }),
+    ...TYPES.map(({ key, label }) => {
+      const prefs = getNotifPrefs();
+      let active = prefs[key];
+
+      const badge = el('span', {
+        text: active ? 'ON' : 'OFF',
+        style: { fontSize: '11px', fontWeight: '700', color: active ? 'var(--color-accent)' : 'var(--color-text-muted)' },
+      });
+
+      return el('div', {
+        style: { display: 'flex', alignItems: 'center', gap: '10px', padding: '8px', borderRadius: '8px', cursor: 'pointer' },
+        events: { click: () => {
+          active = !active;
+          setNotifPref(key, active);
+          badge.textContent = active ? 'ON' : 'OFF';
+          badge.style.color = active ? 'var(--color-accent)' : 'var(--color-text-muted)';
+        } },
+        children: [
+          el('span', { text: label, style: { fontSize: '13px', flex: '1' } }),
+          badge,
+        ],
+      });
+    }),
+  ] });
+}
+
 function buildMenuPanel() {
   const isLight = document.documentElement.classList.contains('light');
 
@@ -255,6 +358,9 @@ function buildMenuPanel() {
           ],
         }),
       ] }),
+
+      // Notifications section
+      buildNotifMenuSection(),
 
       // "Qué es" section
       el('div', { style: { padding: '20px', flex: '1' }, children: [
