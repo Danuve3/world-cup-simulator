@@ -1,7 +1,7 @@
 import { createPRNG, combineSeed } from './prng.js';
 import { MATCH } from '../constants.js';
 import { POSITION_GOAL_WEIGHT } from './players.js';
-import { getSquadForEdition } from './playerEvolution.js';
+import { getSquadForEdition, getMatchLineup } from './playerEvolution.js';
 
 /**
  * Simulate a match minute by minute.
@@ -16,9 +16,11 @@ import { getSquadForEdition } from './playerEvolution.js';
 export function simulateMatch(edition, matchId, teamA, teamB, allowDraw = true) {
   const rng = createPRNG(combineSeed('match', edition, matchId));
 
-  // Load squads for scorer attribution (deterministic per edition)
+  // Load squads and build deterministic lineups (11 starters + 5 subs each)
   const squadA = getSquadForEdition(teamA.code, edition);
   const squadB = getSquadForEdition(teamB.code, edition);
+  const lineupA = getMatchLineup(squadA, teamA.code, edition, matchId);
+  const lineupB = getMatchLineup(squadB, teamB.code, edition, matchId);
 
   const events = [];
   let goalsA = 0;
@@ -26,7 +28,7 @@ export function simulateMatch(edition, matchId, teamA, teamB, allowDraw = true) 
 
   // Simulate regular time (90 min)
   for (let min = 1; min <= MATCH.REGULAR_MINUTES; min++) {
-    const result = simulateMinute(rng, min, teamA, teamB, goalsA, goalsB, squadA, squadB);
+    const result = simulateMinute(rng, min, teamA, teamB, goalsA, goalsB, lineupA, lineupB);
     if (result) {
       events.push(result);
       if (result.team === 'A') goalsA++;
@@ -41,7 +43,7 @@ export function simulateMatch(edition, matchId, teamA, teamB, allowDraw = true) 
   if (!allowDraw && goalsA === goalsB) {
     extraTime = true;
     for (let min = 91; min <= MATCH.REGULAR_MINUTES + MATCH.EXTRA_TIME_MINUTES; min++) {
-      const result = simulateMinute(rng, min, teamA, teamB, goalsA, goalsB, squadA, squadB);
+      const result = simulateMinute(rng, min, teamA, teamB, goalsA, goalsB, lineupA, lineupB);
       if (result) {
         events.push(result);
         if (result.team === 'A') goalsA++;
@@ -77,8 +79,9 @@ export function simulateMatch(edition, matchId, teamA, teamB, allowDraw = true) 
 /**
  * Simulate a single minute of play.
  * Returns a goal event or null.
+ * Scorers are picked exclusively from players currently on the field.
  */
-function simulateMinute(rng, minute, teamA, teamB, goalsA, goalsB, squadA, squadB) {
+function simulateMinute(rng, minute, teamA, teamB, goalsA, goalsB, lineupA, lineupB) {
   const rA = teamA.rating;
   const rB = teamB.rating;
 
@@ -100,8 +103,10 @@ function simulateMinute(rng, minute, teamA, teamB, goalsA, goalsB, squadA, squad
     const powerB = rB * rB * rB * rB;
     const isTeamA = rng.nextBool(powerA / (powerA + powerB));
     const scoringTeam = isTeamA ? 'A' : 'B';
-    const squad = isTeamA ? squadA : squadB;
-    const scorer = pickScorer(rng, squad);
+
+    // Only players on the field at this exact minute can score
+    const onField = getPlayersOnField(isTeamA ? lineupA : lineupB, minute);
+    const scorer = pickScorer(rng, onField);
 
     return {
       type: 'goal',
@@ -118,13 +123,32 @@ function simulateMinute(rng, minute, teamA, teamB, goalsA, goalsB, squadA, squad
 }
 
 /**
- * Pick a goal scorer from the squad using position × rating² weighting.
+ * Return the players currently on the field at a given minute.
+ * Starts with the 11 starters and applies substitutions that have occurred by that minute.
+ */
+function getPlayersOnField(lineup, minute) {
+  const onFieldIds = new Set(lineup.starters.map(p => p.id));
+  const allPlayers = new Map(lineup.starters.map(p => [p.id, p]));
+
+  for (const sub of lineup.substitutions) {
+    if (sub.minute <= minute) {
+      onFieldIds.delete(sub.playerOut.id);
+      onFieldIds.add(sub.playerIn.id);
+      allPlayers.set(sub.playerIn.id, sub.playerIn);
+    }
+  }
+
+  return [...onFieldIds].map(id => allPlayers.get(id));
+}
+
+/**
+ * Pick a goal scorer from on-field players using position × rating² weighting.
  * FW >> MF >> DF >> GK (GK goals are astronomically rare but possible).
  */
-function pickScorer(rng, squad) {
-  if (!squad || squad.length === 0) return null;
-  const weights = squad.map(p => POSITION_GOAL_WEIGHT[p.position] * p.rating * p.rating);
-  return rng.weightedSample(squad, weights);
+function pickScorer(rng, onField) {
+  if (!onField || onField.length === 0) return null;
+  const weights = onField.map(p => POSITION_GOAL_WEIGHT[p.position] * p.rating * p.rating);
+  return rng.weightedSample(onField, weights);
 }
 
 /**

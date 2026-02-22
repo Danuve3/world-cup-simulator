@@ -198,85 +198,134 @@ function getPoolForCode(code) {
 }
 
 /**
- * Compute player stats (goals, matches, minutes) across all matches of a tournament.
- * Uses a realistic playing-time model:
- *   - Each match, determine starting XI + 3 subs from the squad
- *   - Starters play full match minutes; subs play 10–30 min
+ * Get the starting XI and 5 substitutions for a specific match.
+ * Returns { starters, substitutions } where:
+ *   - starters: 11 players (play from kick-off until subbed off or final whistle)
+ *   - substitutions: up to 5 × { playerIn, playerOut, minute } sorted by entry minute
+ *
+ * Bench selection is weighted by rating² so better bench players come on more often.
+ * GK bench slots get ~2% of that weight (they almost never sub in during normal play).
+ * Deterministic: same inputs → same lineup every time.
  */
-export function computePlayerStats(teamCode, edition, teamMatches) {
-  const squad = getSquadForEdition(teamCode, edition);
-  const stats = {};
+export function getMatchLineup(squad, teamCode, edition, matchId) {
+  const rng = createPRNG(combineSeed('lineup', teamCode, edition, matchId));
 
-  // Initialize stats for all 25 players
-  for (const player of squad) {
-    stats[player.id] = { goals: 0, matches: 0, mins: 0 };
-  }
-
-  // For each match the team played in
-  for (const { match, side, matchMinutes } of teamMatches) {
-    const events = match.events || [];
-    const teamGoalEvents = events.filter(e => e.team === side && e.type === 'goal');
-
-    // Determine starting XI from squad (top-rated by position, deterministically)
-    const { starters, subs } = getMatchLineup(squad, teamCode, edition, match.matchId);
-
-    // All starters played the full match minutes
-    for (const player of starters) {
-      stats[player.id].matches++;
-      stats[player.id].mins += matchMinutes;
-    }
-
-    // 3 subs come on deterministically
-    const subRng = createPRNG(combineSeed('subs', teamCode, edition, match.matchId));
-    const numSubs = Math.min(3, subs.length);
-    const chosenSubs = [];
-    const availableSubs = [...subs];
-    for (let i = 0; i < numSubs; i++) {
-      if (availableSubs.length === 0) break;
-      const idx = Math.floor(subRng.next() * availableSubs.length);
-      chosenSubs.push(availableSubs.splice(idx, 1)[0]);
-    }
-    for (const sub of chosenSubs) {
-      const subMins = subRng.nextInt(10, 30);
-      stats[sub.id].matches++;
-      stats[sub.id].mins += subMins;
-    }
-
-    // Attribute goals from events
-    for (const event of teamGoalEvents) {
-      if (event.scorerId && stats[event.scorerId]) {
-        stats[event.scorerId].goals++;
-      }
-    }
-  }
-
-  return { squad, stats };
-}
-
-/**
- * Get the starting XI and bench subs for a specific match.
- * Deterministic: same matchId → same lineup.
- */
-function getMatchLineup(squad, teamCode, edition, matchId) {
-  // Sort squad by position group, then by rating desc within group
   const gks = squad.filter(p => p.position === 'GK').sort((a, b) => b.rating - a.rating);
   const dfs = squad.filter(p => p.position === 'DF').sort((a, b) => b.rating - a.rating);
   const mfs = squad.filter(p => p.position === 'MF').sort((a, b) => b.rating - a.rating);
   const fws = squad.filter(p => p.position === 'FW').sort((a, b) => b.rating - a.rating);
 
-  // Starters: 1 GK + 4 DF + 4 MF + 2 FW (standard 4-4-2 approx)
+  // Starting XI: 1 GK + 4 DF + 4 MF + 2 FW
   const starters = [
     ...gks.slice(0, 1),
     ...dfs.slice(0, 4),
     ...mfs.slice(0, 4),
     ...fws.slice(0, 2),
   ];
-  const subs = [
+
+  // Bench: the remaining 14 players
+  const bench = [
     ...gks.slice(1),
     ...dfs.slice(4),
     ...mfs.slice(4),
     ...fws.slice(2),
   ];
 
-  return { starters, subs };
+  // Pick up to 5 sub candidates weighted by rating².
+  // GK bench weight is 2% of an outfield player's — they almost never come on.
+  const benchWeights = bench.map(p =>
+    p.position === 'GK' ? p.rating * p.rating * 0.02 : p.rating * p.rating
+  );
+  const numSubs = Math.min(5, bench.length);
+  const subCandidates = [];
+  const availableBench = [...bench];
+  const availableWeights = [...benchWeights];
+
+  for (let i = 0; i < numSubs; i++) {
+    if (availableBench.length === 0) break;
+    const player = rng.weightedSample(availableBench, availableWeights);
+    const idx = availableBench.indexOf(player);
+    subCandidates.push(player);
+    availableBench.splice(idx, 1);
+    availableWeights.splice(idx, 1);
+  }
+
+  // Assign realistic entry minutes (sorted ascending after generation).
+  // Windows based on real World Cup substitution patterns:
+  //   Sub 1 — tactical / half-time change : 45–62
+  //   Sub 2 — energy / tactical           : 55–70
+  //   Sub 3 — mid-to-late 2nd half        : 62–76
+  //   Sub 4 — late 2nd half               : 70–83
+  //   Sub 5 — very late / time-wasting    : 79–90
+  const subWindows = [[45, 62], [55, 70], [62, 76], [70, 83], [79, 90]];
+  const rawMinutes = subCandidates.map((_, i) => {
+    const [lo, hi] = subWindows[i] || [60, 85];
+    return rng.nextInt(lo, hi);
+  });
+  rawMinutes.sort((a, b) => a - b);
+
+  // For each sub, decide which starter comes off:
+  // prefer same position group, otherwise the lowest-rated available starter.
+  const availableStarters = [...starters];
+  const substitutions = subCandidates.map((playerIn, i) => {
+    const samePos = availableStarters.filter(s => s.position === playerIn.position);
+    const pool = samePos.length > 0 ? samePos : availableStarters;
+    pool.sort((a, b) => a.rating - b.rating);
+    const playerOut = pool[0];
+    availableStarters.splice(availableStarters.indexOf(playerOut), 1);
+    return { playerIn, playerOut, minute: rawMinutes[i] };
+  });
+
+  return { starters, substitutions };
+}
+
+/**
+ * Compute player stats (goals, matches, minutes) across all matches of a tournament.
+ * Playing-time model:
+ *   - Starters play from minute 1 until subbed off (or final whistle).
+ *   - Subs play from their entry minute to the final whistle.
+ *   - Players not in the match lineup play 0 minutes and cannot score.
+ * Goal scorers are always on-field players (enforced in match.js via getPlayersOnField).
+ */
+export function computePlayerStats(teamCode, edition, teamMatches) {
+  const squad = getSquadForEdition(teamCode, edition);
+  const stats = {};
+  for (const player of squad) {
+    stats[player.id] = { goals: 0, matches: 0, mins: 0 };
+  }
+
+  for (const { match, side, matchMinutes } of teamMatches) {
+    const events = match.events || [];
+    const teamGoalEvents = events.filter(e => e.team === side && e.type === 'goal');
+    const { starters, substitutions } = getMatchLineup(squad, teamCode, edition, match.matchId);
+
+    // Starters: play from kick-off until subbed off (or full match)
+    for (const starter of starters) {
+      const sub = substitutions.find(s => s.playerOut.id === starter.id);
+      const minsPlayed = sub
+        ? Math.min(sub.minute - 1, matchMinutes)
+        : matchMinutes;
+      if (minsPlayed > 0) {
+        stats[starter.id].matches++;
+        stats[starter.id].mins += minsPlayed;
+      }
+    }
+
+    // Subs: play from their entry minute to the final whistle
+    for (const sub of substitutions) {
+      if (sub.minute < matchMinutes) {
+        stats[sub.playerIn.id].matches++;
+        stats[sub.playerIn.id].mins += matchMinutes - sub.minute;
+      }
+    }
+
+    // Attribute goals (scorers are guaranteed to be on-field players via match.js)
+    for (const event of teamGoalEvents) {
+      if (event.scorerId && stats[event.scorerId] !== undefined) {
+        stats[event.scorerId].goals++;
+      }
+    }
+  }
+
+  return { squad, stats };
 }
