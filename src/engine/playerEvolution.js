@@ -15,21 +15,26 @@ const YEARS_PER_EDITION = 4;
 
 /**
  * Probability of retirement based on age at the time of the new edition.
- * Thresholds are set so no player ever appears in a squad older than 37:
- *   age ≥ 38 → guaranteed retirement (newAge = prevAge + 4, so 34 → 38 → gone)
- *   age = 37 → 85 % retire  →  rare survivors are realistic (Maldini, Buffon tier)
- *   age = 35–36 → 45 % retire → possible veterans
- *   age = 33–34 → 18 % retire → experienced regulars
- *   age = 31–32 →  6 % retire → prime players rarely leave early
- *   else       →  2 % retire → injury / surprise retirement
+ *
+ * The scale is designed so that:
+ *   - Players 35–36 are common veterans (most retire but a solid chunk stays)
+ *   - Players 37–38 are exceptional (Maldini/Pirlo tier) — minority survives
+ *   - Players 39–40 are very rare (Buffon/Ronaldo tier) — handful per edition
+ *   - Players 41–42 are legendary freaks — possible but extremely unlikely
+ *   - age ≥ 43: hard ceiling, nobody plays that old
+ *
+ * With 4-year edition cycles, a 34-year-old GK can reach 42 if they survive
+ * two retirement rolls (≈ 30% × 5% = 1.5 % probability). Possible, not common.
  */
 function retirementProbability(age) {
-  if (age >= 38) return 1.0;
-  if (age >= 36) return 0.85;
-  if (age >= 34) return 0.45;
-  if (age >= 32) return 0.18;
-  if (age >= 30) return 0.06;
-  return 0.02;
+  if (age >= 43) return 1.0;  // hard ceiling
+  if (age >= 41) return 0.95; // 5 %  survive — legendary (Cristiano/Buffon tier)
+  if (age >= 39) return 0.85; // 15 % survive — exceptional fitness
+  if (age >= 37) return 0.70; // 30 % survive — still elite, uncommon
+  if (age >= 35) return 0.40; // 60 % survive — experienced veterans
+  if (age >= 33) return 0.14; // 86 % survive — prime players
+  if (age >= 31) return 0.05; // 95 % survive — typical squad age
+  return 0.02;                // 98 % survive — young players almost never retire early
 }
 
 /**
@@ -67,7 +72,7 @@ function generateReplacement(rng, teamCode, position, slotIndex, pool, teamRatin
   const minRating = Math.max(25, teamRating - 30);
   const maxRating = Math.max(minRating + 5, teamRating - 8);
   const rating = rng.nextInt(minRating, maxRating);
-  const age = Math.max(18, rng.nextInt(18, 23));
+  const age = rng.nextInt(17, 22);
 
   return {
     id: `${teamCode}-slot${slotIndex}-gen${Math.floor(rng.next() * 9999)}`,

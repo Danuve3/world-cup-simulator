@@ -929,14 +929,21 @@ function generateRating(rng, teamRating, slotIndex, hasException, exceptionSlot)
  * Generate a realistic age for a player based on position and slot.
  * GK1 tends to be experienced; GK3 tends to be young.
  * Starters (slot 0 of group) are more likely in their peak years.
+ *
+ * Extreme ages are possible but rare:
+ *   - Prodigy (15–17): ~0.4 % chance for bench/rotation/GK3 slots
+ *     → roughly 1–2 prodigies per edition across all 32 squads (Pelé tier)
+ *   - Veterans: GK1 base up to 34 so they can survive to 42 after two editions
+ *     (≈ 1.5 % probability, Cristiano/Buffon tier)
  */
 function generateAge(rng, position, slotIndex) {
   if (position === 'GK') {
-    // GK1: experienced starter; GK2: backup; GK3: young prospect
-    // Cap GK1 at 33 so they retire before becoming 37 (max realistic age)
-    const ranges = [[26, 33], [23, 31], [18, 24]];
+    // GK3 can be a teenage prodigy (~0.4 % chance)
+    if (slotIndex === 2 && rng.next() < 0.004) return rng.nextInt(15, 17);
+    // GK1 extended to 34 so veteran keepers can reach 42 after 2 editions
+    const ranges = [[24, 34], [21, 31], [17, 24]];
     const [min, max] = ranges[slotIndex] || [20, 28];
-    return Math.max(18, rng.nextInt(min, max));
+    return rng.nextInt(min, max);
   }
 
   // Compute position-local index (0 = best, n-1 = worst in group)
@@ -945,12 +952,14 @@ function generateAge(rng, position, slotIndex) {
   else if (slotIndex < 19) posIndex = slotIndex - 11; // MF
   else posIndex = slotIndex - 19; // FW
 
-  // Starters: prime age; reserves: mix of young prospects and veterans
-  // Clamp ensures no player starts above 34 (would retire before 2nd edition)
-  if (posIndex === 0) return Math.min(34, rng.nextInt(24, 32)); // undisputed starter
-  if (posIndex <= 2) return Math.min(33, rng.nextInt(22, 31));  // regular starter
-  if (posIndex <= 4) return Math.min(30, rng.nextInt(20, 29));  // rotation
-  return Math.max(18, Math.min(27, rng.nextInt(18, 27)));       // bench
+  // Bench and rotation slots have a rare prodigy chance (~0.4 % each)
+  if (posIndex >= 3 && rng.next() < 0.004) return rng.nextInt(15, 17);
+
+  // Normal age distribution — wider bench range allows 17-year-old prospects
+  if (posIndex === 0) return rng.nextInt(24, 32); // undisputed starter: peak years
+  if (posIndex <= 2) return rng.nextInt(21, 31);  // regular starter
+  if (posIndex <= 4) return rng.nextInt(18, 29);  // rotation
+  return rng.nextInt(17, 27);                      // bench: young prospects welcome
 }
 
 /**
