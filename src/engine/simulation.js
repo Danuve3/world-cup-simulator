@@ -560,10 +560,13 @@ export function getLiveStats(timestamp) {
         if (diff >= 4) {
           currentBiggestWins.push({
             edition,
+            matchId: m.matchId,
             teamA: m.teamA,
             teamB: m.teamB,
             goalsA: m.goalsA,
             goalsB: m.goalsB,
+            events: m.events,
+            extraTime: m.extraTime,
           });
         }
       }

@@ -1374,5 +1374,8 @@ function renderRestPhase(state) {
     children.push(createRecentMatchesSection(state.recentMatches));
   }
 
+  const topScorers = createTopScorersWidget(state.liveEditionGoals);
+  if (topScorers) children.push(topScorers);
+
   return el('div', { children });
 }
