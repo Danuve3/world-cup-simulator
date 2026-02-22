@@ -1,10 +1,8 @@
 import { el, flag, getEditionYear } from '../components.js';
 import { getSquadForEdition } from '../../engine/playerEvolution.js';
-import { POSITION_GOAL_WEIGHT } from '../../engine/players.js';
 import { computeCurrentPlayerStats } from '../../engine/simulation.js';
+import { navigate } from '../router.js';
 
-// Position labels
-const POS_LABEL = { GK: 'Portero', DF: 'Defensa', MF: 'Centrocampista', FW: 'Delantero' };
 const POS_SHORT = { GK: 'POR', DF: 'DEF', MF: 'MED', FW: 'DEL' };
 const POS_ORDER = ['GK', 'DF', 'MF', 'FW'];
 const POS_COLOR = {
@@ -14,15 +12,12 @@ const POS_COLOR = {
   FW: 'text-red-500 dark:text-red-400',
 };
 
-// Persistent state
-let expandedTeam = null; // teamCode currently expanded
-
 /**
  * Teams view — squads for every team in the current World Cup.
+ * params[0] = teamCode → renders squad detail page for that team.
  */
-export function renderTeams(container, state) {
+export function renderTeams(container, state, params = []) {
   container.innerHTML = '';
-  expandedTeam = expandedTeam; // preserve across re-renders
 
   if (!state || !state.tournament) {
     container.appendChild(el('div', { className: 'card p-12 text-center', children: [
@@ -31,104 +26,91 @@ export function renderTeams(container, state) {
     return;
   }
 
-  const { edition, tournament } = state;
-  const year = getEditionYear(edition);
-
-  // Header
-  container.appendChild(
-    el('div', {
-      className: 'flex items-center gap-3 mb-5',
-      children: [
-        el('h2', { text: `Equipos — Mundial ${year}`, className: 'text-lg md:text-xl font-bold' }),
-      ],
-    })
-  );
-
-  // Legend for positions
-  container.appendChild(
-    el('div', {
-      className: 'flex flex-wrap gap-3 mb-4 text-xs text-text-muted',
-      children: POS_ORDER.map(pos =>
-        el('span', {
-          className: `flex items-center gap-1 ${POS_COLOR[pos]}`,
-          children: [
-            el('span', { text: POS_SHORT[pos], className: 'font-bold' }),
-            el('span', { text: POS_LABEL[pos], className: 'text-text-muted' }),
-          ],
-        })
-      ),
-    })
-  );
-
-  // Build list of teams from the current edition's draw
-  const teams = tournament.draw.groups.flat();
-
-  // Pre-compute live stats only for the expanded team (avoid computing for all 32)
-  let expandedTeamStats = null;
-  if (expandedTeam) {
-    expandedTeamStats = computeCurrentPlayerStats(expandedTeam, edition, state.cycleMinute, tournament);
+  if (params[0]) {
+    renderTeamDetail(container, state, params[0]);
+    return;
   }
 
-  const grid = el('div', { className: 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3' });
+  const { edition, tournament } = state;
+  const year = getEditionYear(edition);
+  const teams = tournament.draw.groups.flat();
+
+  container.appendChild(
+    el('h2', { text: `Plantillas — Mundial ${year}`, className: 'text-lg md:text-xl font-bold mb-5' })
+  );
+
+  const grid = el('div', { className: 'grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2' });
 
   for (const team of teams) {
-    const squad = getSquadForEdition(team.code, edition);
-    const liveStats = (expandedTeam === team.code && expandedTeamStats) ? expandedTeamStats : null;
-    const card = createTeamCard(team, squad, liveStats, edition, () => {
-      if (expandedTeam === team.code) {
-        expandedTeam = null;
-      } else {
-        expandedTeam = team.code;
-      }
-      renderTeams(container, state);
-    });
-    grid.appendChild(card);
+    grid.appendChild(
+      el('button', {
+        className: 'card card-interactive flex flex-col items-center gap-2 p-2.5 text-center',
+        events: { click: () => navigate('/teams/' + team.code) },
+        children: [
+          el('div', {
+            className: 'ring-1 ring-black/10 rounded overflow-hidden shadow-sm',
+            children: [flag(team.code, 36)],
+          }),
+          el('span', { text: team.name, className: 'text-[10px] text-text-secondary leading-tight line-clamp-2 w-full' }),
+        ],
+      })
+    );
   }
 
   container.appendChild(grid);
 }
 
-function createTeamCard(team, squad, playerStats, edition, onToggle) {
-  const isExpanded = expandedTeam === team.code;
+function renderTeamDetail(container, state, teamCode) {
+  const { edition, tournament } = state;
+  const teams = tournament.draw.groups.flat();
+  const team = teams.find(t => t.code === teamCode);
 
-  // Sort squad by position group order then rating desc
-  const sortedSquad = [...squad].sort((a, b) => {
+  if (!team) {
+    container.appendChild(el('p', { text: 'Equipo no encontrado.', className: 'text-sm text-text-muted' }));
+    return;
+  }
+
+  // Back button
+  container.appendChild(
+    el('button', {
+      className: 'flex items-center gap-2 text-sm text-accent hover:underline cursor-pointer mb-5 font-medium',
+      events: { click: () => navigate('/teams') },
+      children: [
+        el('span', { html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>' }),
+        el('span', { text: 'Plantillas' }),
+      ],
+    })
+  );
+
+  // Team header
+  container.appendChild(
+    el('div', {
+      className: 'card p-5 mb-4 flex items-center gap-4',
+      children: [
+        el('div', {
+          className: 'ring-1 ring-black/10 rounded overflow-hidden shadow-sm shrink-0',
+          children: [flag(team.code, 64)],
+        }),
+        el('div', { children: [
+          el('h2', { text: team.name, className: 'text-xl font-bold' }),
+          el('p', { text: `Rating: ${team.rating}`, className: 'text-sm text-text-muted mt-0.5' }),
+        ] }),
+      ],
+    })
+  );
+
+  // Squad table with live stats
+  const squad = getSquadForEdition(team.code, edition);
+  const liveStats = computeCurrentPlayerStats(team.code, edition, state.cycleMinute, tournament);
+
+  const sorted = [...squad].sort((a, b) => {
     const po = POS_ORDER.indexOf(a.position) - POS_ORDER.indexOf(b.position);
     return po !== 0 ? po : b.rating - a.rating;
   });
 
-  const header = el('div', {
-    className: 'flex items-center gap-3 px-3.5 py-3 cursor-pointer select-none',
-    events: { click: onToggle },
-    children: [
-      flag(team.code, 32),
-      el('div', { className: 'flex-1 min-w-0', children: [
-        el('div', { text: team.name, className: 'text-sm font-semibold truncate' }),
-        el('div', { text: `Rating: ${team.rating}`, className: 'text-xs text-text-muted' }),
-      ] }),
-      el('span', {
-        html: isExpanded
-          ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18,15 12,9 6,15"/></svg>'
-          : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6,9 12,15 18,9"/></svg>',
-        className: 'w-4 h-4 text-text-muted shrink-0',
-      }),
-    ],
-  });
-
-  const children = [header];
-
-  if (isExpanded) {
-    const squadTable = createSquadTable(sortedSquad, playerStats || {});
-    children.push(el('div', {
-      className: 'border-t border-border-subtle',
-      children: [squadTable],
-    }));
-  }
-
-  return el('div', {
-    className: 'card overflow-hidden',
-    children,
-  });
+  container.appendChild(
+    el('div', { className: 'card overflow-hidden', children: [createSquadTable(sorted, liveStats)] })
+  );
 }
 
 function createSquadTable(squad, playerStats) {
@@ -139,10 +121,7 @@ function createSquadTable(squad, playerStats) {
     return el('div', {
       className: 'flex items-center gap-2 px-3 py-1.5 hover:bg-bg-hover/40 text-xs',
       children: [
-        el('span', {
-          text: POS_SHORT[player.position],
-          className: `w-7 shrink-0 font-bold ${posColor}`,
-        }),
+        el('span', { text: POS_SHORT[player.position], className: `w-7 shrink-0 font-bold ${posColor}` }),
         el('span', { text: player.name, className: 'flex-1 min-w-0 truncate text-text-primary' }),
         el('span', { text: player.rating, className: 'w-6 text-right text-text-muted font-mono' }),
         el('span', { text: player.age, className: 'w-6 text-right text-text-muted' }),
@@ -157,7 +136,6 @@ function createSquadTable(squad, playerStats) {
 
   return el('div', {
     children: [
-      // Column headers
       el('div', {
         className: 'flex items-center gap-2 px-3 py-1.5 border-b border-border-subtle text-[10px] font-bold uppercase tracking-wider text-text-muted',
         children: [

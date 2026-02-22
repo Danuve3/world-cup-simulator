@@ -2,17 +2,29 @@ import { el, flag, getEditionYear, createPenaltyDisplay } from '../components.js
 import { getCompletedTournaments } from '../../engine/simulation.js';
 import { simulateTournament } from '../../engine/tournament.js';
 import { getSquadForEdition } from '../../engine/playerEvolution.js';
+import { navigate } from '../router.js';
 
-// Persistent expanded state across re-renders
+// Persistent expanded match timelines across re-renders
 const expandedMatchIds = new Set();
-
-// Track which team squad is expanded in detail view (for DOM toggling)
-let expandedSquadTeam = null;
 
 /**
  * History view — Past World Cups.
+ * params[0] = edition → renders detail for that WC edition.
+ * params[1] = teamCode → renders squad detail for that team in that edition.
  */
-export function renderHistory(container, state) {
+export function renderHistory(container, state, params = []) {
+  if (params[1]) {
+    renderHistoryTeamDetail(container, state, parseInt(params[0]), params[1]);
+    return;
+  }
+  if (params[0]) {
+    renderHistoryDetail(container, state, parseInt(params[0]));
+    return;
+  }
+  renderHistoryList(container, state);
+}
+
+function renderHistoryList(container, state) {
   container.innerHTML = '';
 
   container.appendChild(
@@ -47,7 +59,7 @@ export function renderHistory(container, state) {
     const batch = sorted.slice(shown, shown + BATCH);
     for (const summary of batch) {
       listContainer.appendChild(createHistoryCard(summary, () => {
-        renderHistoryDetail(container, state, summary.edition);
+        navigate('/history/' + summary.edition);
       }));
     }
     shown += batch.length;
@@ -189,16 +201,15 @@ function renderHistoryDetail(container, state, edition) {
   container.appendChild(
     el('button', {
       className: 'flex items-center gap-2 text-sm text-accent hover:underline cursor-pointer mb-5 font-medium',
-      events: { click: () => renderHistory(container, state) },
+      events: { click: () => navigate('/history') },
       children: [
         el('span', { html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>' }),
-        el('span', { text: 'Volver al historial' }),
+        el('span', { text: 'Historial' }),
       ],
     })
   );
 
   const tournament = simulateTournament(edition);
-  expandedSquadTeam = null;
 
   // Podium + awards card
   container.appendChild(
@@ -246,56 +257,29 @@ function renderHistoryDetail(container, state, edition) {
     })
   );
 
-  // Teams section — clickable pills that toggle a squad panel inline
+  // Teams section — grid that navigates to a dedicated squad page
   container.appendChild(el('p', { text: 'Selecciones', className: 'section-title' }));
   const allTeams = tournament.draw.groups.flat();
-  expandedSquadTeam = null;
 
-  // Shared squad panel that swaps content without re-rendering the page
-  const squadPanel = el('div', { className: 'mb-4' });
-  squadPanel.style.display = 'none';
-
-  const teamsGrid = el('div', { className: 'grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-2 mb-3' });
-
-  // Track the active pill button for highlight toggling
-  const pillButtons = new Map(); // teamCode → button el
+  const teamsGrid = el('div', { className: 'grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2 mb-4' });
 
   for (const team of allTeams) {
-    const pill = el('button', {
-      className: 'card card-interactive flex flex-col items-center gap-1.5 px-2 py-2 text-center transition-all',
-      children: [
-        flag(team.code, 32),
-        el('span', { text: team.name, className: 'text-[10px] text-text-secondary leading-tight line-clamp-2' }),
-      ],
-      events: {
-        click: () => {
-          if (expandedSquadTeam === team.code) {
-            // Collapse
-            expandedSquadTeam = null;
-            squadPanel.style.display = 'none';
-            pill.classList.remove('ring-2', 'ring-accent');
-          } else {
-            // Deselect previous
-            if (expandedSquadTeam) {
-              pillButtons.get(expandedSquadTeam)?.classList.remove('ring-2', 'ring-accent');
-            }
-            expandedSquadTeam = team.code;
-            squadPanel.innerHTML = '';
-            squadPanel.appendChild(createSquadModal(team, tournament, edition));
-            squadPanel.style.display = 'block';
-            pill.classList.add('ring-2', 'ring-accent');
-            // Scroll squad panel into view smoothly
-            squadPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-          }
-        },
-      },
-    });
-    pillButtons.set(team.code, pill);
-    teamsGrid.appendChild(pill);
+    teamsGrid.appendChild(
+      el('button', {
+        className: 'card card-interactive flex flex-col items-center gap-2 p-2.5 text-center',
+        events: { click: () => navigate('/history/' + edition + '/' + team.code) },
+        children: [
+          el('div', {
+            className: 'ring-1 ring-black/10 rounded overflow-hidden shadow-sm',
+            children: [flag(team.code, 36)],
+          }),
+          el('span', { text: team.name, className: 'text-[10px] text-text-secondary leading-tight line-clamp-2 w-full' }),
+        ],
+      })
+    );
   }
 
   container.appendChild(teamsGrid);
-  container.appendChild(squadPanel);
 
   // Groups — full standings with matches
   container.appendChild(el('p', { text: 'Grupos', className: 'section-title' }));
@@ -564,8 +548,49 @@ const POS_COLOR_H = {
 };
 const POS_ORDER_H = ['GK', 'DF', 'MF', 'FW'];
 
+function renderHistoryTeamDetail(container, state, edition, teamCode) {
+  container.innerHTML = '';
 
-function createSquadModal(team, tournament, edition) {
+  const tournament = simulateTournament(edition);
+  const allTeams = tournament.draw.groups.flat();
+  const team = allTeams.find(t => t.code === teamCode);
+
+  if (!team) {
+    container.appendChild(el('p', { text: 'Equipo no encontrado.', className: 'text-sm text-text-muted' }));
+    return;
+  }
+
+  // Back button → edition detail
+  container.appendChild(
+    el('button', {
+      className: 'flex items-center gap-2 text-sm text-accent hover:underline cursor-pointer mb-5 font-medium',
+      events: { click: () => navigate('/history/' + edition) },
+      children: [
+        el('span', { html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>' }),
+        el('span', { text: `Mundial ${getEditionYear(edition)}` }),
+      ],
+    })
+  );
+
+  // Team header
+  container.appendChild(
+    el('div', {
+      className: 'card p-5 mb-4 flex items-center gap-4',
+      children: [
+        el('div', {
+          className: 'ring-1 ring-black/10 rounded overflow-hidden shadow-sm shrink-0',
+          children: [flag(team.code, 64)],
+        }),
+        el('div', { children: [
+          el('h2', { text: team.name, className: 'text-xl font-bold' }),
+          el('p', { text: `Rating: ${team.rating}`, className: 'text-sm text-text-muted mt-0.5' }),
+          el('p', { text: `Mundial ${getEditionYear(edition)}`, className: 'text-xs text-text-muted' }),
+        ] }),
+      ],
+    })
+  );
+
+  // Squad table with tournament stats
   const squad = getSquadForEdition(team.code, edition);
   const playerStats = tournament.playerStats || {};
   const sorted = [...squad].sort((a, b) => {
@@ -579,42 +604,34 @@ function createSquadModal(team, tournament, edition) {
       className: 'flex items-center gap-2 px-3 py-1.5 hover:bg-bg-hover/40 text-xs',
       children: [
         el('span', { text: POS_SHORT_H[player.position], className: `w-7 shrink-0 font-bold ${POS_COLOR_H[player.position]}` }),
-        el('span', { text: player.name, className: 'flex-1 min-w-0 truncate' }),
+        el('span', { text: player.name, className: 'flex-1 min-w-0 truncate text-text-primary' }),
         el('span', { text: player.rating, className: 'w-6 text-right text-text-muted font-mono' }),
-        el('span', { text: player.age, className: 'w-5 text-right text-text-muted' }),
+        el('span', { text: player.age, className: 'w-6 text-right text-text-muted' }),
         el('span', { text: stats.goals > 0 ? String(stats.goals) : '', className: 'w-8 text-right text-text-secondary font-medium' }),
         el('span', { text: `${stats.mins}'`, className: 'w-10 text-right text-text-muted font-mono' }),
       ],
     });
   });
 
-  return el('div', {
-    className: 'card overflow-hidden mb-4',
-    children: [
-      // Header
-      el('div', {
-        className: 'flex items-center gap-3 px-4 py-3 border-b border-border-subtle',
-        children: [
-          flag(team.code, 28),
-          el('span', { text: team.name, className: 'font-semibold text-sm' }),
-          el('span', { text: `Rating: ${team.rating}`, className: 'text-xs text-text-muted ml-1' }),
-        ],
-      }),
-      // Column headers
-      el('div', {
-        className: 'flex items-center gap-2 px-3 py-1.5 border-b border-border-subtle text-[10px] font-bold uppercase tracking-wider text-text-muted',
-        children: [
-          el('span', { text: 'Pos', className: 'w-7 shrink-0' }),
-          el('span', { text: 'Jugador', className: 'flex-1' }),
-          el('span', { text: 'Rtg', className: 'w-6 text-right' }),
-          el('span', { text: 'Edad', className: 'w-5 text-right' }),
-          el('span', { text: 'Goles', className: 'w-8 text-right' }),
-          el('span', { text: 'Mins', className: 'w-10 text-right' }),
-        ],
-      }),
-      ...rows,
-    ],
-  });
+  container.appendChild(
+    el('div', {
+      className: 'card overflow-hidden',
+      children: [
+        el('div', {
+          className: 'flex items-center gap-2 px-3 py-1.5 border-b border-border-subtle text-[10px] font-bold uppercase tracking-wider text-text-muted',
+          children: [
+            el('span', { text: 'Pos', className: 'w-7 shrink-0' }),
+            el('span', { text: 'Jugador', className: 'flex-1' }),
+            el('span', { text: 'Rtg', className: 'w-6 text-right' }),
+            el('span', { text: 'Edad', className: 'w-6 text-right' }),
+            el('span', { text: 'Goles', className: 'w-8 text-right' }),
+            el('span', { text: 'Mins', className: 'w-10 text-right' }),
+          ],
+        }),
+        ...rows,
+      ],
+    })
+  );
 }
 
 function createMiniPodium(emoji, label, team, isChamp = false) {

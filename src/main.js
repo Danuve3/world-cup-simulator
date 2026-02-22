@@ -13,6 +13,7 @@ let currentState = null;
 let mainContainer = null;
 let tickInterval = null;
 let currentView = null;
+let currentParams = [];
 
 mainContainer = createAppShell();
 
@@ -31,14 +32,16 @@ route('/bracket', (container) => {
   renderBracket(container, currentState);
 });
 
-route('/teams', (container) => {
+route('/teams', (container, params) => {
   currentView = 'teams';
-  renderTeams(container, currentState);
+  currentParams = params;
+  renderTeams(container, currentState, params);
 });
 
-route('/history', (container) => {
+route('/history', (container, params) => {
   currentView = 'history';
-  renderHistory(container, currentState);
+  currentParams = params;
+  renderHistory(container, currentState, params);
 });
 
 route('/stats', (container) => {
@@ -79,10 +82,10 @@ tickInterval = setInterval(() => {
   if (liveRendered) {
     currentState = newState;
     switch (currentView) {
-      case 'groups':  renderGroups(mainContainer, currentState);  break;
-      case 'bracket': renderBracket(mainContainer, currentState); break;
-      case 'stats':   renderStats(mainContainer, currentState);   break;
-      case 'teams':   renderTeams(mainContainer, currentState);   break;
+      case 'groups':  renderGroups(mainContainer, currentState);              break;
+      case 'bracket': renderBracket(mainContainer, currentState);             break;
+      case 'stats':   renderStats(mainContainer, currentState);               break;
+      case 'teams':   renderTeams(mainContainer, currentState, currentParams); break;
     }
   }
 
