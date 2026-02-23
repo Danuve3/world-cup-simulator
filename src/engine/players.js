@@ -1004,15 +1004,184 @@ export function generateBaseSquad(team) {
     const rating = generateRating(rng, team.rating, index, hasException, exceptionSlot);
     const age = generateAge(rng, position, index);
 
+    const playerId = `${team.code}-${index}`;
+    // Bio data uses a completely separate PRNG so the main squad RNG is unaffected
+    const bioRng = createPRNG(combineSeed('bio', playerId));
+    const birthCity = getBirthCity(bioRng, team.code);
+    const dateOfBirth = generateDateOfBirth(bioRng, age, 2026);
+
     return {
-      id: `${team.code}-${index}`,
+      id: playerId,
       name,
       teamCode: team.code,
       position,
       rating,
       age,
+      birthCity,
+      dateOfBirth,
     };
   });
+}
+
+// ── Birth city pools by team code ─────────────────────────────────────────────
+
+const BIRTH_CITY_POOLS = {
+  // Europe
+  'fr': ['París','Lyon','Marsella','Toulouse','Niza','Nantes','Burdeos','Lille','Rennes','Grenoble'],
+  'be': ['Bruselas','Amberes','Gante','Lieja','Brujas','Charleroi','Namur'],
+  'nc': ['Numea','Mont-Dore','Dumbéa','Koné'],
+  'pf': ['Papeete','Faaa','Punaauia','Moorea'],
+  'ht': ['Puerto Príncipe','Carrefour','Delmas','Pétionville','Cap-Haïtien'],
+  'es': ['Madrid','Barcelona','Valencia','Sevilla','Bilbao','Zaragoza','Málaga','Murcia','Vigo','Granada'],
+  'pt': ['Lisboa','Oporto','Braga','Setúbal','Coimbra','Funchal','Faro','Évora'],
+  'it': ['Roma','Milán','Nápoles','Turín','Palermo','Génova','Bolonia','Florencia','Catania','Bari'],
+  'cy': ['Nicosia','Limassol','Lárnaca','Pafos'],
+  'de': ['Berlín','Múnich','Hamburgo','Frankfurt','Stuttgart','Dortmund','Düsseldorf','Colonia','Leipzig'],
+  'nl': ['Ámsterdam','Rotterdam','La Haya','Utrecht','Eindhoven','Groningen','Tilburg'],
+  'at': ['Viena','Graz','Linz','Salzburgo','Innsbruck','Klagenfurt'],
+  'ch': ['Zúrich','Ginebra','Basilea','Berna','Lausana','Lucerna'],
+  'lu': ['Luxemburgo','Esch-sur-Alzette','Differdange','Dudelange'],
+  'dk': ['Copenhague','Aarhus','Odense','Aalborg','Esbjerg'],
+  'se': ['Estocolmo','Gotemburgo','Malmö','Uppsala','Linköping','Örebro'],
+  'no': ['Oslo','Bergen','Trondheim','Stavanger','Tromsø'],
+  'fi': ['Helsinki','Espoo','Tampere','Vantaa','Turku','Oulu'],
+  'is': ['Reikiavik','Kópavogur','Hafnarfjörður','Akureyri'],
+  'ee': ['Tallin','Tartu','Narva','Pärnu'],
+  'gb-eng': ['Londres','Birmingham','Manchester','Liverpool','Leeds','Sheffield','Newcastle','Bristol','Leicester','Nottingham'],
+  'gb-sct': ['Glasgow','Edimburgo','Aberdeen','Dundee','Inverness'],
+  'gb-wls': ['Cardiff','Swansea','Newport','Wrexham'],
+  'ie': ['Dublín','Cork','Limerick','Galway','Waterford'],
+  'pl': ['Varsovia','Cracovia','Łódź','Wroclaw','Poznań','Gdansk','Szczecin'],
+  'cz': ['Praga','Brno','Ostrava','Plzeň','Olomouc','Liberec'],
+  'sk': ['Bratislava','Košice','Prešov','Žilina','Nitra'],
+  'si': ['Liubliana','Maribor','Celje','Kranj','Koper'],
+  'hu': ['Budapest','Debrecen','Miskolc','Pécs','Győr','Nyíregyháza'],
+  'ro': ['Bucarest','Cluj-Napoca','Timișoara','Iași','Constanța','Craiova'],
+  'bg': ['Sofía','Plovdiv','Varna','Burgas','Ruse'],
+  'hr': ['Zagreb','Split','Rijeka','Osijek','Zadar'],
+  'rs': ['Belgrado','Novi Sad','Niš','Kragujevac','Subotica'],
+  'ba': ['Sarajevo','Banja Luka','Mostar','Tuzla','Zenica'],
+  'me': ['Podgorica','Nikšić','Bijelo Polje','Herceg Novi'],
+  'mk': ['Skopie','Bitola','Kumanovo','Tetovo','Ohrid'],
+  'al': ['Tirana','Durrës','Vlorë','Shkodër','Elbasan'],
+  'gr': ['Atenas','Salónica','El Pireo','Larisa','Heraclión','Patras'],
+  'ua': ['Kiev','Járkov','Dnipró','Odesa','Zaporizhzhia','Leópolis'],
+  'ru': ['Moscú','San Petersburgo','Novosibirsk','Ekaterimburgo','Kazan','Nizhni Nóvgorod'],
+  'by': ['Minsk','Homiel','Mogilev','Vitebsk','Grodno','Brest'],
+  'lt': ['Vilna','Kaunas','Klaipėda','Šiauliai','Panevėžys'],
+  'lv': ['Riga','Daugavpils','Liepāja','Jēlgava'],
+  'ge': ['Tiflis','Batumi','Kutaisi','Rustavi','Zugdidi'],
+  'am': ['Ereván','Gumri','Vanadzor','Ejmiatsin'],
+  'az': ['Bakú','Ganja','Sumgait','Nakhchivan','Lankaran'],
+  'kz': ['Almatý','Astana','Shimkent','Karagandá','Aktobé'],
+  'kg': ['Biskek','Osh','Jalal-Abad','Karakol'],
+  'uz': ['Taskent','Samarcanda','Namangán','Andiyán','Nukús'],
+  'tr': ['Estambul','Ankara','Esmirna','Bursa','Adana','Gaziantep','Konya'],
+  'il': ['Tel Aviv','Jerusalén','Haifa','Rishon LeZion','Ashdod'],
+  // Americas
+  'us': ['Nueva York','Los Ángeles','Chicago','Houston','Filadelfia','San Antonio','Dallas','Atlanta','Miami','Boston'],
+  'ca': ['Toronto','Montreal','Vancouver','Calgary','Ottawa','Winnipeg','Edmonton'],
+  'mx': ['Ciudad de México','Guadalajara','Monterrey','Puebla','Tijuana','León','Mérida','Juárez'],
+  'br': ['São Paulo','Río de Janeiro','Salvador','Belo Horizonte','Curitiba','Recife','Porto Alegre','Fortaleza','Manaus'],
+  'ar': ['Buenos Aires','Córdoba','Rosario','Mendoza','La Plata','Tucumán','Mar del Plata','Salta'],
+  'uy': ['Montevideo','Salto','Paysandú','Las Piedras','Rivera','Maldonado'],
+  'py': ['Asunción','Ciudad del Este','Lambaré','Fernando de la Mora','Capiatá'],
+  'cl': ['Santiago','Valparaíso','Concepción','La Serena','Antofagasta','Viña del Mar'],
+  'pe': ['Lima','Arequipa','Trujillo','Chiclayo','Cusco','Iquitos','Piura'],
+  'ec': ['Guayaquil','Quito','Cuenca','Machala','Manta','Santo Domingo'],
+  'bo': ['La Paz','Santa Cruz','Cochabamba','Sucre','Oruro','Potosí'],
+  've': ['Caracas','Maracaibo','Valencia','Maracay','Barquisimeto','Maturín'],
+  'co': ['Bogotá','Medellín','Cali','Barranquilla','Cartagena','Cúcuta','Bucaramanga'],
+  'cr': ['San José','Alajuela','Cartago','Heredia','Liberia'],
+  'pa': ['Ciudad de Panamá','Colón','David','La Chorrera','Santiago'],
+  'hn': ['Tegucigalpa','San Pedro Sula','La Ceiba','Choloma','El Progreso'],
+  'sv': ['San Salvador','Santa Ana','San Miguel','Soyapango','Mejicanos'],
+  'gt': ['Ciudad de Guatemala','Mixco','Villa Nueva','Quetzaltenango','Escuintla'],
+  'ni': ['Managua','León','Masaya','Matagalpa','Chinandega'],
+  'cw': ['Willemstad','Barber','Sint Michiel'],
+  'do': ['Santo Domingo','Santiago','La Romana','San Cristóbal','La Vega'],
+  'cu': ['La Habana','Santiago de Cuba','Camagüey','Holguín','Guantánamo'],
+  'jm': ['Kingston','Portmore','Spanish Town','Montego Bay','Mandeville'],
+  'tt': ['Puerto España','San Fernando','Chaguanas','Arima'],
+  // Africa
+  'ma': ['Casablanca','Rabat','Fez','Marrakech','Agadir','Tánger','Meknès','Oujda'],
+  'dz': ['Argel','Orán','Constantine','Annaba','Blida','Batna','Sétif'],
+  'tn': ['Túnez','Sfax','Sousse','Kairouan','Bizerta','Gabès'],
+  'eg': ['El Cairo','Alejandría','Giza','Port Said','Suez','Luxor'],
+  'ly': ['Trípoli','Bengasi','Misrata','Zawiya','Sabha'],
+  'ng': ['Lagos','Abuja','Kano','Ibadan','Port Harcourt','Benin City','Enugu','Kaduna'],
+  'sn': ['Dakar','Thiès','Kaolack','Ziguinchor','Diourbel','Mbour'],
+  'gh': ['Acra','Kumasi','Tamale','Sekondi','Cape Coast','Tema'],
+  'ci': ['Abiyán','Bouaké','Daloa','Yamoussoukro','San-Pédro','Korhogo'],
+  'cm': ['Yaundé','Duala','Bamenda','Bafoussam','Garoua','Maroua'],
+  'ml': ['Bamako','Sikasso','Mopti','Koutiala','Kayes'],
+  'bf': ['Uagadugú','Bobo-Dioulasso','Koudougou','Ouahigouya','Banfora'],
+  'cd': ['Kinshasa','Mbuji-Mayi','Lubumbashi','Kisangani','Kananga','Bukavu'],
+  'gn': ['Conakry','Nzérékoré','Kankan','Kindia','Labé'],
+  'ga': ['Libreville','Port-Gentil','Franceville','Oyem','Moanda'],
+  'bj': ['Cotonú','Porto-Novo','Parakou','Abomey-Calavi','Bohicon'],
+  'tg': ['Lomé','Sokodé','Kara','Kpalimé','Atakpamé'],
+  'za': ['Johannesburgo','Ciudad del Cabo','Durban','Pretoria','Port Elizabeth','Soweto'],
+  'ke': ['Nairobi','Mombasa','Kisumu','Nakuru','Eldoret'],
+  'ug': ['Kampala','Gulu','Lira','Mbarara','Jinja'],
+  'tz': ['Dar es Salam','Mwanza','Arusha','Dodoma','Mbeya'],
+  'zm': ['Lusaka','Ndola','Kitwe','Livingstone','Kabwe'],
+  'zw': ['Harare','Bulawayo','Chitungwiza','Mutare','Gweru'],
+  'mg': ['Antananarivo','Toamasina','Antsirabe','Fianarantsoa','Mahajanga'],
+  'na': ['Windhoek','Rundu','Walvis Bay','Oshakati','Swakopmund'],
+  'ao': ['Luanda','Huambo','Lobito','Benguela','Uíge'],
+  'mz': ['Maputo','Matola','Nampula','Beira','Chimoio'],
+  'cv': ['Praia','Mindelo','Assomada','Santa Maria'],
+  // Asia
+  'jp': ['Tokio','Osaka','Yokohama','Nagoya','Kioto','Kobe','Fukuoka','Hiroshima','Sapporo','Sendai'],
+  'kr': ['Seúl','Busan','Inchon','Daegu','Daejeon','Gwangju','Suwon','Ulsan'],
+  'cn': ['Pekín','Shanghái','Guangzhou','Shenzhen','Chengdu','Tianjin','Wuhan','Chongqing','Xian','Nanjing'],
+  'kp': ['Pionyang','Hamhung','Chongjin','Nampo','Wonsan'],
+  'ir': ['Teherán','Isfahán','Shiraz','Tabriz','Ahvaz','Mashhad','Karaj'],
+  'sa': ['Riad','Jeddah','Meca','Medina','Dammam','Taif','Tabuk'],
+  'qa': ['Doha','Al Rayyan','Al Wakrah','Al Khor','Umm Salal'],
+  'ae': ['Dubái','Abu Dabi','Sharjah','Ajman','Ras al Jaima'],
+  'iq': ['Bagdad','Basora','Mosul','Erbil','Kirkuk','Najaf'],
+  'jo': ['Amán','Zarqa','Irbid','Aqaba'],
+  'sy': ['Damasco','Alepo','Homs','Latakia','Hama'],
+  'ps': ['Gaza','Ramala','Hebrón','Nablus'],
+  'bh': ['Manama','Al Muharraq','Riffa','Hamad Town'],
+  'om': ['Mascate','Salalah','Sohar','Nizwa'],
+  'in': ['Bombay','Delhi','Bengaluru','Calcuta','Chennai','Hyderabad','Ahmedabad','Pune'],
+  'th': ['Bangkok','Nonthaburi','Hat Yai','Chiang Mai','Pattaya'],
+  'id': ['Yakarta','Surabaya','Bandung','Medan','Semarang','Makassar'],
+  'my': ['Kuala Lumpur','George Town','Johor Bahru','Ipoh','Petaling Jaya'],
+  'vn': ['Hanói','Ho Chi Minh','Da Nang','Hai Phong','Can Tho'],
+  // Oceania
+  'au': ['Sídney','Melbourne','Brisbane','Perth','Adelaida','Canberra','Gold Coast'],
+  'nz': ['Auckland','Wellington','Christchurch','Hamilton','Tauranga'],
+  'pg': ['Port Moresby','Lae','Mount Hagen','Madang','Wewak'],
+  'fj': ['Suva','Lautoka','Nadi','Labasa'],
+  'ws': ['Apia','Vaitele','Salelologa'],
+  'to': ['Nukualofa','Neiafu','Haveluloto'],
+  'sb': ['Honiara','Auki','Gizo'],
+  'vu': ['Port Vila','Luganville'],
+};
+
+/**
+ * Pick a birth city for a player based on team code.
+ * Falls back to a generic "capital" if the team isn't in the map.
+ */
+export function getBirthCity(rng, teamCode) {
+  const cities = BIRTH_CITY_POOLS[teamCode];
+  if (!cities || cities.length === 0) return 'Ciudad desconocida';
+  return cities[Math.floor(rng.next() * cities.length)];
+}
+
+/**
+ * Generate a date of birth string (YYYY-MM-DD) from age and edition year.
+ */
+export function generateDateOfBirth(rng, age, editionYear) {
+  const birthYear = editionYear - age;
+  const month = rng.nextInt(1, 12);
+  const maxDay = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+  const day = rng.nextInt(1, maxDay);
+  return `${birthYear}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
 // ── Pre-generated base squads (edition 0) ────────────────────────────────────

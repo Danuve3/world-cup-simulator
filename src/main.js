@@ -34,7 +34,7 @@ route('/bracket', (container) => {
 });
 
 route('/teams', (container, params) => {
-  currentView = 'teams';
+  currentView = params[1] ? 'player' : 'teams';
   currentParams = params;
   renderTeams(container, currentState, params);
 });
@@ -77,18 +77,19 @@ tickInterval = setInterval(() => {
     renderDashboard(mainContainer, currentState);
   }
 
-  // Groups, bracket, stats and teams refresh every tick while matches are live,
+  // Groups, bracket, stats, teams and player views refresh every tick while matches are live,
   // and once more on the tick they end so the final result appears immediately.
   const liveRendered = mainContainer && (hasLiveMatches || matchesJustEnded) &&
     (currentView === 'groups' || currentView === 'bracket' ||
-     currentView === 'stats' || currentView === 'teams');
+     currentView === 'stats' || currentView === 'teams' || currentView === 'player');
   if (liveRendered) {
     currentState = newState;
     switch (currentView) {
       case 'groups':  renderGroups(mainContainer, currentState);              break;
       case 'bracket': renderBracket(mainContainer, currentState);             break;
       case 'stats':   renderStats(mainContainer, currentState);               break;
-      case 'teams':   renderTeams(mainContainer, currentState, currentParams); break;
+      case 'teams':
+      case 'player':  renderTeams(mainContainer, currentState, currentParams); break;
     }
   }
 

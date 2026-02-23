@@ -4,7 +4,7 @@
  * by new fictional players generated deterministically.
  */
 import { createPRNG, combineSeed } from './prng.js';
-import { getBaseSquad, generateBaseSquad, SQUAD_POSITIONS, POSITION_GOAL_WEIGHT } from './players.js';
+import { getBaseSquad, generateBaseSquad, SQUAD_POSITIONS, POSITION_GOAL_WEIGHT, getBirthCity, generateDateOfBirth } from './players.js';
 import { getTeamByCode } from './teams.js';
 
 // Cache of evolved squads per (teamCode, edition)
@@ -62,7 +62,7 @@ function evolveRating(rng, rating, currentAge) {
  * Generate a replacement player for a retired slot.
  * The replacement is young (18–23) and rated lower than average squad rating.
  */
-function generateReplacement(rng, teamCode, position, slotIndex, pool, teamRating) {
+function generateReplacement(rng, teamCode, position, slotIndex, pool, teamRating, edition) {
   // Import inline to avoid circular deps — use pool passed from caller
   const firstName = pool.first[Math.floor(rng.next() * pool.first.length)];
   const lastName = pool.last[Math.floor(rng.next() * pool.last.length)];
@@ -74,14 +74,24 @@ function generateReplacement(rng, teamCode, position, slotIndex, pool, teamRatin
   const rating = rng.nextInt(minRating, maxRating);
   const age = rng.nextInt(17, 22);
 
+  const id = `${teamCode}-slot${slotIndex}-gen${Math.floor(rng.next() * 9999)}`;
+
+  // Bio data uses a separate PRNG so the main evolution rng is unaffected
+  const bioRng = createPRNG(combineSeed('bio', id));
+  const birthCity = getBirthCity(bioRng, teamCode);
+  const editionYear = 2026 + edition * 4;
+  const dateOfBirth = generateDateOfBirth(bioRng, age, editionYear);
+
   return {
-    id: `${teamCode}-slot${slotIndex}-gen${Math.floor(rng.next() * 9999)}`,
+    id,
     name,
     teamCode,
     position,
     rating,
     age,
     isReplacement: true,
+    birthCity,
+    dateOfBirth,
   };
 }
 
@@ -116,7 +126,7 @@ export function getSquadForEdition(teamCode, edition) {
 
     if (rng.next() < retireProb) {
       // Player retires — generate a replacement
-      return generateReplacement(rng, teamCode, player.position, slotIndex, pool, teamRating);
+      return generateReplacement(rng, teamCode, player.position, slotIndex, pool, teamRating, edition);
     }
 
     // Player returns for another World Cup
@@ -316,7 +326,7 @@ export function computePlayerStats(teamCode, edition, teamMatches) {
   const squad = getSquadForEdition(teamCode, edition);
   const stats = {};
   for (const player of squad) {
-    stats[player.id] = { goals: 0, matches: 0, mins: 0 };
+    stats[player.id] = { goals: 0, matches: 0, mins: 0, started: 0 };
   }
 
   for (const { match, side, matchMinutes } of teamMatches) {
@@ -333,6 +343,7 @@ export function computePlayerStats(teamCode, edition, teamMatches) {
       if (minsPlayed > 0) {
         stats[starter.id].matches++;
         stats[starter.id].mins += minsPlayed;
+        stats[starter.id].started++;
       }
     }
 

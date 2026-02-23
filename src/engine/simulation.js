@@ -2,7 +2,7 @@ import { EPOCH, CYCLE_DURATION, SCHEDULE } from '../constants.js';
 import { simulateTournament, getTournamentSummary } from './tournament.js';
 import { getPhaseAtMinute, getLiveMatches, getUpcomingMatches, getGroupMatchTiming, getKnockoutMatchTiming, getMatchDisplayState } from './timeline.js';
 import { getMatchAtMinute } from './match.js';
-import { computePlayerStats } from './playerEvolution.js';
+import { computePlayerStats, getSquadForEdition } from './playerEvolution.js';
 
 /**
  * Time offset for debug time-travel. In minutes.
@@ -947,6 +947,111 @@ export function computeCurrentPlayerStats(teamCode, edition, cycleMinute, tourna
 
   const { stats } = computePlayerStats(teamCode, edition, teamMatches);
   return stats;
+}
+
+/**
+ * Compute per-edition career stats for a specific player.
+ *
+ * Returns an array of edition objects (most recent first):
+ *   { year, edition, participated, played, minutes, started, goals, rating, goldenBoot, goldenBall }
+ *
+ * @param {string} playerId
+ * @param {string} teamCode
+ * @param {number} [timestamp]
+ * @param {object|null} [liveEditionGoals] - Pre-computed goals map from getCurrentState()
+ */
+export function getPlayerCareerStats(playerId, teamCode, timestamp, liveEditionGoals = null) {
+  const { edition: currentEdition, cycleMinute } = timestampToEdition(timestamp);
+  const results = [];
+
+  for (let ed = 0; ed <= currentEdition; ed++) {
+    const year = 2026 + ed * 4;
+
+    // Check if player was in the squad for this edition
+    const squad = getSquadForEdition(teamCode, ed);
+    const playerInSquad = squad.find(p => p.id === playerId);
+
+    if (!playerInSquad) {
+      results.push({ year, edition: ed, participated: false });
+      continue;
+    }
+
+    const tournament = simulateTournament(ed);
+
+    let playerStats;
+    let goldenBoot = false;
+    let goldenBall = false;
+
+    if (ed < currentEdition) {
+      // Completed edition — use pre-computed tournament.playerStats
+      const entry = tournament.playerStats?.[playerId];
+      if (!entry || entry.mins === 0) {
+        results.push({ year, edition: ed, participated: true, played: 0, minutes: 0, started: 0, goals: 0, rating: null, goldenBoot: false, goldenBall: false });
+        continue;
+      }
+      playerStats = { goals: entry.goals, matches: entry.matches, mins: entry.mins, started: entry.started || 0 };
+      goldenBoot = tournament.topScorer?.player.id === playerId;
+      goldenBall = tournament.mvp?.player.id === playerId;
+    } else {
+      // Current (in-progress) edition — filter by time
+      const stats = computeCurrentPlayerStats(teamCode, ed, cycleMinute, tournament);
+      const entry = stats[playerId] || { goals: 0, matches: 0, mins: 0, started: 0 };
+      playerStats = entry;
+
+      // GoldenBoot: check if this player has the most goals among played matches
+      if (liveEditionGoals && playerStats.goals > 0) {
+        const maxGoals = Math.max(...Object.values(liveEditionGoals).map(e => e.goals));
+        goldenBoot = (liveEditionGoals[playerId]?.goals || 0) === maxGoals && maxGoals > 0;
+      }
+
+      // GoldenBall: only once the tournament is fully complete
+      const finalTiming = getKnockoutMatchTiming('FINAL', 0);
+      if (finalTiming.endMin <= cycleMinute) {
+        goldenBall = tournament.mvp?.player.id === playerId;
+        // Override goldenBoot with definitive result once tournament ends
+        goldenBoot = tournament.topScorer?.player.id === playerId;
+      }
+    }
+
+    if (playerStats.matches === 0) {
+      results.push({ year, edition: ed, participated: true, played: 0, minutes: 0, started: 0, goals: 0, rating: null, goldenBoot: false, goldenBall: false });
+      continue;
+    }
+
+    const rating = computeEditionRating(playerStats, goldenBall);
+
+    results.push({
+      year,
+      edition: ed,
+      participated: true,
+      played: playerStats.matches,
+      minutes: playerStats.mins,
+      started: playerStats.started,
+      goals: playerStats.goals,
+      rating,
+      goldenBoot,
+      goldenBall,
+    });
+  }
+
+  // Most recent edition first
+  return results.reverse();
+}
+
+/**
+ * Compute a player's match rating for an edition based on their stats.
+ * Scale: 5.0 (bench warmer) to ~9.5 (unstoppable striker + MVP).
+ */
+function computeEditionRating({ goals, matches, mins, started }, goldenBall = false) {
+  const base = 6.0;
+  const goalsPerMatch = goals / Math.max(matches, 1);
+  const goalsBonus = Math.min(goalsPerMatch * 1.5, 2.5);
+  const minuteRatio = mins / Math.max(matches * 90, 1);
+  const activityBonus = minuteRatio * 0.8;
+  const titularBonus = (started / Math.max(matches, 1)) * 0.6;
+  const mvpBonus = goldenBall ? 0.5 : 0;
+  const raw = base + goalsBonus + activityBonus + titularBonus + mvpBonus;
+  return Math.round(Math.max(5.0, Math.min(9.9, raw)) * 10) / 10;
 }
 
 // Expose setTimeOffset globally for debug

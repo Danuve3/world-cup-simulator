@@ -2,6 +2,7 @@ import { el, flag, getEditionYear } from '../components.js';
 import { getSquadForEdition } from '../../engine/playerEvolution.js';
 import { computeCurrentPlayerStats } from '../../engine/simulation.js';
 import { navigate } from '../router.js';
+import { renderPlayerDetail } from './player-detail.js';
 
 const POS_SHORT = { GK: 'POR', DF: 'DEF', MF: 'MED', FW: 'DEL' };
 const POS_ORDER = ['GK', 'DF', 'MF', 'FW'];
@@ -23,6 +24,11 @@ export function renderTeams(container, state, params = []) {
     container.appendChild(el('div', { className: 'card p-12 text-center', children: [
       el('p', { text: 'Cargando torneo...', className: 'text-sm text-text-muted' }),
     ] }));
+    return;
+  }
+
+  if (params[0] && params[1]) {
+    renderPlayerDetail(container, state, params[0], params[1]);
     return;
   }
 
@@ -109,17 +115,18 @@ function renderTeamDetail(container, state, teamCode) {
   });
 
   container.appendChild(
-    el('div', { className: 'card overflow-hidden', children: [createSquadTable(sorted, liveStats)] })
+    el('div', { className: 'card overflow-hidden', children: [createSquadTable(sorted, liveStats, teamCode)] })
   );
 }
 
-function createSquadTable(squad, playerStats) {
+function createSquadTable(squad, playerStats, teamCode) {
   const rows = squad.map(player => {
     const stats = playerStats[player.id] || { goals: 0, matches: 0, mins: 0 };
     const posColor = POS_COLOR[player.position];
 
     return el('div', {
-      className: 'flex items-center gap-2 px-3 py-1.5 hover:bg-bg-hover/40 text-xs',
+      className: 'flex items-center gap-2 px-3 py-1.5 hover:bg-bg-hover/40 active:bg-bg-hover/60 text-xs cursor-pointer',
+      events: { click: () => navigate(`/teams/${teamCode}/${player.id}`) },
       children: [
         el('span', { text: POS_SHORT[player.position], className: `w-7 shrink-0 font-bold ${posColor}` }),
         el('span', { text: player.name, className: 'flex-1 min-w-0 truncate text-text-primary' }),
@@ -130,6 +137,7 @@ function createSquadTable(squad, playerStats) {
           className: 'w-8 text-right text-text-secondary font-medium',
         }),
         el('span', { text: `${stats.mins}'`, className: 'w-10 text-right text-text-muted font-mono' }),
+        el('span', { html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3 text-text-muted/40 shrink-0"><path d="M9 18l6-6-6-6"/></svg>' }),
       ],
     });
   });
@@ -145,6 +153,7 @@ function createSquadTable(squad, playerStats) {
           el('span', { text: 'Edad', className: 'w-6 text-right' }),
           el('span', { text: 'Goles', className: 'w-8 text-right' }),
           el('span', { text: 'Mins', className: 'w-10 text-right' }),
+          el('span', { className: 'w-3' }),
         ],
       }),
       ...rows,

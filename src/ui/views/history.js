@@ -3,6 +3,7 @@ import { getCompletedTournaments } from '../../engine/simulation.js';
 import { simulateTournament } from '../../engine/tournament.js';
 import { getSquadForEdition } from '../../engine/playerEvolution.js';
 import { navigate } from '../router.js';
+import { renderPlayerDetail } from './player-detail.js';
 
 // Persistent expanded match timelines across re-renders
 const expandedMatchIds = new Set();
@@ -13,6 +14,15 @@ const expandedMatchIds = new Set();
  * params[1] = teamCode → renders squad detail for that team in that edition.
  */
 export function renderHistory(container, state, params = []) {
+  if (params[2]) {
+    // /history/{edition}/{teamCode}/{playerId}
+    renderPlayerDetail(
+      container, state, params[1], params[2],
+      `/history/${params[0]}/${params[1]}`,
+      parseInt(params[0])
+    );
+    return;
+  }
   if (params[1]) {
     renderHistoryTeamDetail(container, state, parseInt(params[0]), params[1]);
     return;
@@ -601,7 +611,8 @@ function renderHistoryTeamDetail(container, state, edition, teamCode) {
   const rows = sorted.map(player => {
     const stats = playerStats[player.id] || { goals: 0, matches: 0, mins: 0 };
     return el('div', {
-      className: 'flex items-center gap-2 px-3 py-1.5 hover:bg-bg-hover/40 text-xs',
+      className: 'flex items-center gap-2 px-3 py-1.5 hover:bg-bg-hover/40 active:bg-bg-hover/60 text-xs cursor-pointer',
+      events: { click: () => navigate(`/history/${edition}/${teamCode}/${player.id}`) },
       children: [
         el('span', { text: POS_SHORT_H[player.position], className: `w-7 shrink-0 font-bold ${POS_COLOR_H[player.position]}` }),
         el('span', { text: player.name, className: 'flex-1 min-w-0 truncate text-text-primary' }),
@@ -609,6 +620,7 @@ function renderHistoryTeamDetail(container, state, edition, teamCode) {
         el('span', { text: player.age, className: 'w-6 text-right text-text-muted' }),
         el('span', { text: stats.goals > 0 ? String(stats.goals) : '', className: 'w-8 text-right text-text-secondary font-medium' }),
         el('span', { text: `${stats.mins}'`, className: 'w-10 text-right text-text-muted font-mono' }),
+        el('span', { html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3 text-text-muted/40 shrink-0"><path d="M9 18l6-6-6-6"/></svg>' }),
       ],
     });
   });
@@ -626,6 +638,7 @@ function renderHistoryTeamDetail(container, state, edition, teamCode) {
             el('span', { text: 'Edad', className: 'w-6 text-right' }),
             el('span', { text: 'Goles', className: 'w-8 text-right' }),
             el('span', { text: 'Mins', className: 'w-10 text-right' }),
+            el('span', { className: 'w-3' }),
           ],
         }),
         ...rows,
