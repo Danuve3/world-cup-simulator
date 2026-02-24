@@ -1,7 +1,7 @@
 import { el, flag, formatMinutes, formatCountdown, countdownDisplay, formatTime, getEditionYear } from '../components.js';
 import { SCHEDULE, DRAW_COUNTDOWN_MS, DRAW_DISPLAY_MS } from '../../constants.js';
 import { TEAMS } from '../../engine/teams.js';
-import { getMatchDisplayState, getCompletedMatchIds } from '../../engine/timeline.js';
+import { getMatchDisplayState, getCompletedMatchIds, getKnockoutMatchTiming } from '../../engine/timeline.js';
 import { getNow } from '../../engine/simulation.js';
 import { getSquadForEdition } from '../../engine/playerEvolution.js';
 
@@ -54,14 +54,14 @@ export function renderDashboard(container, state) {
     showingBall = false;
   }
 
-  const finalEnded = isFinalMatchEnded(phase.phase, state.liveMatches);
+  const displayPhase = getDisplayPhase(phase.phase, state.liveMatches, state.timestamp, state.cycleStart);
 
-  if (phase.phase !== 'CELEBRATION' && !finalEnded) stopConfetti();
+  if (displayPhase !== 'CELEBRATION') stopConfetti();
 
   container.innerHTML = '';
-  container.appendChild(createHero(state));
+  container.appendChild(createHero(state, displayPhase));
 
-  switch (finalEnded ? 'CELEBRATION' : phase.phase) {
+  switch (displayPhase) {
     case 'DRAW':
       container.appendChild(renderDrawPhase(state));
       break;
@@ -72,7 +72,7 @@ export function renderDashboard(container, state) {
       container.appendChild(renderCountdown(state));
       break;
     default:
-      if (phase.phase.startsWith('REST')) {
+      if (displayPhase.startsWith('REST')) {
         container.appendChild(renderRestPhase(state));
       } else {
         container.appendChild(renderLivePhase(state));
@@ -109,16 +109,27 @@ function computeTournamentProgress(cycleMinute) {
   return Math.min(100, Math.round(completed / 64 * 100));
 }
 
-function isFinalMatchEnded(phase, liveMatches) {
-  // liveMatches uses exact float minutes, so becomes empty immediately when the
-  // match window ends — more reliable than comparing integer cycleMinute to a float endMin.
-  return phase === 'FINAL' && liveMatches.length === 0;
+const CELEBRATION_DURATION_MS = 2 * 60 * 1000; // 2 real minutes
+
+/**
+ * Returns the effective phase to use for rendering, overriding the schedule phase when:
+ * - The Final match just ended → show CELEBRATION for 2 minutes, then COUNTDOWN
+ * - The old CELEBRATION phase (8940-9000) → skip directly to COUNTDOWN
+ */
+function getDisplayPhase(phase, liveMatches, timestamp, cycleStart) {
+  if (phase === 'FINAL' && liveMatches.length === 0) {
+    const finalEndMs = cycleStart + getKnockoutMatchTiming('FINAL', 0).endMin * 60 * 1000;
+    return (timestamp - finalEndMs) < CELEBRATION_DURATION_MS ? 'CELEBRATION' : 'COUNTDOWN';
+  }
+  // The original CELEBRATION phase is now redundant — render COUNTDOWN directly
+  if (phase === 'CELEBRATION') return 'COUNTDOWN';
+  return phase;
 }
 
-function createHero(state) {
+function createHero(state, displayPhase) {
   const { phase, tournament, edition, cycleMinute } = state;
+  const dp = displayPhase ?? phase.phase;
   const progress = computeTournamentProgress(cycleMinute);
-  const finalDone = isFinalMatchEnded(phase.phase, state.liveMatches);
 
   return el('div', {
     className: 'card p-5 md:p-6 mb-6',
@@ -146,10 +157,10 @@ function createHero(state) {
             ],
           }),
           el('div', {
-            className: `pill ${getPhaseStyle(finalDone ? 'CELEBRATION' : phase.phase)}`,
+            className: `pill ${getPhaseStyle(dp)}`,
             children: [
-              isActivePhase(phase.phase) && !finalDone ? el('span', { className: 'live-dot' }) : null,
-              el('span', { text: getBadgeLabel(finalDone ? 'CELEBRATION' : phase.phase) }),
+              isActivePhase(dp) ? el('span', { className: 'live-dot' }) : null,
+              el('span', { text: getBadgeLabel(dp) }),
             ].filter(Boolean),
           }),
         ],
