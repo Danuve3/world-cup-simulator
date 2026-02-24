@@ -21,11 +21,19 @@ export function renderDashboard(container, state) {
     const inDisplayPhase = cycleElapsed >= DRAW_COUNTDOWN_MS;
     const cycle = Math.floor(phaseElapsedMs / CYCLE_MS);
     const revealedCount = Math.min(totalTeams, inDisplayPhase ? cycle + 1 : cycle);
-    const nowShowingBall = inDisplayPhase && revealedCount > 0 && revealedCount <= totalTeams;
+    // Ball only shows during the display half of a cycle that has a real team (cycle 0–31)
+    const nowShowingBall = inDisplayPhase && cycle < totalTeams;
+    const drawDone = revealedCount >= totalTeams;
 
-    // Only skip re-render if both revealedCount AND display state are unchanged
+    // Skip re-render when nothing structural has changed
     if (revealedCount === lastDrawRenderedCount && nowShowingBall === showingBall && container.childNodes.length > 0) {
-      if (!nowShowingBall && revealedCount < totalTeams) {
+      if (drawDone) {
+        const section = document.getElementById('draw-done-section');
+        if (section) {
+          section.innerHTML = '';
+          buildDrawDoneSectionContent(state).forEach(child => section.appendChild(child));
+        }
+      } else if (!nowShowingBall) {
         updateDrawCountdownInPlace(Math.max(0, DRAW_COUNTDOWN_MS - cycleElapsed));
       }
       return;
@@ -136,6 +144,29 @@ function getPhaseStyle(phase) {
 
 /* ── Draw phase ── */
 
+function buildDrawDoneSectionContent(state) {
+  const nodes = [createNextMatchCountdown(state)];
+
+  if (state.upcoming && state.upcoming.length > 1) {
+    nodes.push(el('div', { children: [
+      el('p', { text: 'Próximos', className: 'section-title' }),
+      el('div', {
+        className: 'grid grid-cols-1 md:grid-cols-2 gap-2',
+        children: state.upcoming.slice(1).map(m => createUpcomingCard(m, state)),
+      }),
+    ]}));
+  }
+
+  if (state.recentMatches && state.recentMatches.length > 0) {
+    nodes.push(createRecentMatchesSection(state.recentMatches));
+  }
+
+  const topScorers = createTopScorersWidget(state.liveEditionGoals);
+  if (topScorers) nodes.push(topScorers);
+
+  return nodes;
+}
+
 let showingBall = false;
 let ballTeam = null;
 let ballGroup = -1;
@@ -154,13 +185,21 @@ function renderDrawPhase(state) {
   const revealedCount = Math.min(totalTeams, inDisplayPhase ? cycle + 1 : cycle);
   const countdownMsLeft = Math.max(0, DRAW_COUNTDOWN_MS - cycleElapsed);
 
+  const drawDone = revealedCount >= totalTeams;
+  const year = getEditionYear(state.edition);
+
   const children = [
     el('div', {
       className: 'flex items-center justify-between mb-4',
       children: [
-        el('h3', { text: 'Sorteo en curso', className: 'text-base font-bold' }),
-        el('span', { text: `${revealedCount}/${totalTeams} equipos`, className: 'text-sm text-text-muted' }),
-      ],
+        el('h3', {
+          text: drawDone ? `Mundial ${tournament.host.name} ${year}` : 'Sorteo en curso',
+          className: 'text-base font-bold',
+        }),
+        !drawDone
+          ? el('span', { text: `${revealedCount}/${totalTeams} equipos`, className: 'text-sm text-text-muted' })
+          : null,
+      ].filter(Boolean),
     }),
   ];
 
@@ -202,7 +241,7 @@ function renderDrawPhase(state) {
     );
   }
 
-  if (revealedCount < totalTeams && !showingBall) {
+  if (!drawDone && !showingBall) {
     children.push(
       el('div', {
         className: 'card p-5 mb-5 text-center',
@@ -214,7 +253,12 @@ function renderDrawPhase(state) {
     );
   }
 
-  // Team list — all teams sorted alphabetically
+  if (drawDone) {
+    children.push(el('div', { id: 'draw-done-section', children: buildDrawDoneSectionContent(state) }));
+    return el('div', { children });
+  }
+
+  // Active draw: team list accordion + groups grid
   const revealedCodes = new Set(
     drawSequence.slice(0, revealedCount).map(d => d.team.code)
   );

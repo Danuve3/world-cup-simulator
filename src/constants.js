@@ -25,8 +25,8 @@ export const DRAW_DISPLAY_MS   = 3000; // 3-second display after each reveal
 
 /** Schedule phases (start minute, end minute) — all times are multiples of 60 so matches start at :00 */
 export const SCHEDULE = {
-  DRAW:        { start: 0,    end: 5,    label: 'Sorteo' },
-  GROUP_STAGE: { start: 5,    end: 5820, label: 'Fase de Grupos' },
+  DRAW:        { start: 0,    end: 20,   label: 'Sorteo' },
+  GROUP_STAGE: { start: 20,   end: 5820, label: 'Fase de Grupos' },
   REST_1:      { start: 5820, end: 5940, label: 'Descanso' },
   ROUND_16:    { start: 5940, end: 6660, label: 'Octavos de Final' },
   REST_2:      { start: 6660, end: 6780, label: 'Descanso' },
