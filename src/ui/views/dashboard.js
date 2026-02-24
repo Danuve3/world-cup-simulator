@@ -1386,7 +1386,7 @@ function renderCountdown(state) {
             className: 'flex items-center justify-center gap-2.5 mb-5',
             children: [
               flag(nextHost.code, 28),
-              el('span', { text: nextHost.name, className: 'text-sm font-semibold' }),
+              el('span', { text: `${nextHost.name} ${getEditionYear(state.edition + 1)}`, className: 'text-sm font-semibold' }),
             ],
           }) : null,
           countdownDisplay(ms),
