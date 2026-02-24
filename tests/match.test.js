@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { simulateMatch, getMatchAtMinute } from '../src/engine/match.js';
+import { getTeamByCode } from '../src/engine/teams.js';
 
-const TEAM_A = { name: 'Team A', code: 'ta', confederation: 'UEFA', rating: 90 };
-const TEAM_B = { name: 'Team B', code: 'tb', confederation: 'CONMEBOL', rating: 85 };
+const TEAM_A = getTeamByCode('es');  // España — UEFA, rating 91
+const TEAM_B = getTeamByCode('br');  // Brasil — CONMEBOL, rating 92
 
 describe('Match simulation', () => {
   it('is deterministic — same inputs produce same result', () => {
