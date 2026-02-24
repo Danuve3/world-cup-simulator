@@ -1,7 +1,7 @@
 import { el, flag, createPenaltyDisplay } from '../components.js';
 import { getGroupMatchTiming } from '../../engine/timeline.js';
 import { computeStandings } from '../../engine/group-stage.js';
-import { SCHEDULE } from '../../constants.js';
+import { SCHEDULE, DRAW_COUNTDOWN_MS, DRAW_DISPLAY_MS } from '../../constants.js';
 
 // Persistent expanded state across re-renders (survives live-match ticks)
 const expandedMatchIds = new Set();
@@ -14,8 +14,10 @@ export function renderGroups(container, state) {
 
   const { tournament, cycleMinute, liveMatches } = state;
 
-  // During draw, groups aren't formed yet
-  if (cycleMinute < SCHEDULE.DRAW.end) {
+  // Show "sorteo en curso" until all teams are revealed (not just until DRAW phase ends)
+  const drawDoneMs = tournament.draw.drawSequence.length * (DRAW_COUNTDOWN_MS + DRAW_DISPLAY_MS);
+  const drawDone = cycleMinute * 60 * 1000 >= drawDoneMs;
+  if (!drawDone) {
     container.appendChild(
       el('h2', { text: 'Fase de Grupos', className: 'text-lg md:text-xl font-bold mb-5' })
     );
