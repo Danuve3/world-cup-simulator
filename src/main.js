@@ -3,7 +3,7 @@ import { createAppShell, updateHeader, updateNav } from './ui/app.js';
 import { route, initRouter, setOnRouteChange } from './ui/router.js';
 import { getCurrentState } from './engine/simulation.js';
 import { detectAndNotify } from './notifications.js';
-import { renderDashboard } from './ui/views/dashboard.js';
+import { renderDashboard, stopConfetti } from './ui/views/dashboard.js';
 import { renderGroups } from './ui/views/groups.js';
 import { renderBracket } from './ui/views/bracket.js';
 import { renderHistory } from './ui/views/history.js';
@@ -24,28 +24,33 @@ route('/', (container) => {
 });
 
 route('/groups', (container) => {
+  stopConfetti();
   currentView = 'groups';
   renderGroups(container, currentState);
 });
 
 route('/bracket', (container) => {
+  stopConfetti();
   currentView = 'bracket';
   renderBracket(container, currentState);
 });
 
 route('/teams', (container, params) => {
+  stopConfetti();
   currentView = params[1] ? 'player' : 'teams';
   currentParams = params;
   renderTeams(container, currentState, params);
 });
 
 route('/history', (container, params) => {
+  stopConfetti();
   currentView = 'history';
   currentParams = params;
   renderHistory(container, currentState, params);
 });
 
 route('/stats', (container) => {
+  stopConfetti();
   currentView = 'stats';
   renderStats(container, currentState);
 });

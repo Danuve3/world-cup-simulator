@@ -54,10 +54,14 @@ export function renderDashboard(container, state) {
     showingBall = false;
   }
 
+  const finalEnded = isFinalMatchEnded(phase.phase, state.liveMatches);
+
+  if (phase.phase !== 'CELEBRATION' && !finalEnded) stopConfetti();
+
   container.innerHTML = '';
   container.appendChild(createHero(state));
 
-  switch (phase.phase) {
+  switch (finalEnded ? 'CELEBRATION' : phase.phase) {
     case 'DRAW':
       container.appendChild(renderDrawPhase(state));
       break;
@@ -105,9 +109,16 @@ function computeTournamentProgress(cycleMinute) {
   return Math.min(100, Math.round(completed / 64 * 100));
 }
 
+function isFinalMatchEnded(phase, liveMatches) {
+  // liveMatches uses exact float minutes, so becomes empty immediately when the
+  // match window ends — more reliable than comparing integer cycleMinute to a float endMin.
+  return phase === 'FINAL' && liveMatches.length === 0;
+}
+
 function createHero(state) {
   const { phase, tournament, edition, cycleMinute } = state;
   const progress = computeTournamentProgress(cycleMinute);
+  const finalDone = isFinalMatchEnded(phase.phase, state.liveMatches);
 
   return el('div', {
     className: 'card p-5 md:p-6 mb-6',
@@ -135,10 +146,10 @@ function createHero(state) {
             ],
           }),
           el('div', {
-            className: `pill ${getPhaseStyle(phase.phase)}`,
+            className: `pill ${getPhaseStyle(finalDone ? 'CELEBRATION' : phase.phase)}`,
             children: [
-              isActivePhase(phase.phase) ? el('span', { className: 'live-dot' }) : null,
-              el('span', { text: getBadgeLabel(phase.phase) }),
+              isActivePhase(phase.phase) && !finalDone ? el('span', { className: 'live-dot' }) : null,
+              el('span', { text: getBadgeLabel(finalDone ? 'CELEBRATION' : phase.phase) }),
             ].filter(Boolean),
           }),
         ],
@@ -1296,6 +1307,176 @@ function createRecentMatchCard(m) {
   });
 }
 
+/* ── Celebration confetti ── */
+
+const TEAM_COLORS = {
+  ar: ['#74ACDF', '#FFFFFF'],
+  au: ['#00843D', '#FFB81C'],
+  at: ['#ED2939', '#FFFFFF'],
+  be: ['#EF3340', '#FDDA24', '#000000'],
+  bo: ['#D52B1E', '#F9E300', '#007934'],
+  ba: ['#002395', '#FFCD00'],
+  br: ['#009C3B', '#FFDF00', '#002776'],
+  bf: ['#EF2B2D', '#009A00'],
+  bg: ['#FFFFFF', '#00966E', '#D62612'],
+  by: ['#CF101A', '#FFFFFF', '#4AA657'],
+  ca: ['#FF0000', '#FFFFFF'],
+  cl: ['#D52B1E', '#FFFFFF', '#0039A6'],
+  cn: ['#DE2910', '#FFDE00'],
+  co: ['#FCD116', '#003087', '#CE1126'],
+  cr: ['#002B7F', '#FFFFFF', '#CE1126'],
+  hr: ['#FF0000', '#FFFFFF', '#0044A4'],
+  cu: ['#002A8F', '#FFFFFF', '#CF142B'],
+  cy: ['#FFFFFF', '#4E3629'],
+  cz: ['#D7141A', '#FFFFFF', '#11457E'],
+  cd: ['#007FFF', '#FFCD00', '#CE1126'],
+  dk: ['#C60C30', '#FFFFFF'],
+  dz: ['#006233', '#FFFFFF', '#D21034'],
+  ec: ['#FFD100', '#003893', '#CE1126'],
+  eg: ['#CE1126', '#FFFFFF', '#000000'],
+  es: ['#AA151B', '#F1BF00'],
+  ee: ['#0072CE', '#000000', '#FFFFFF'],
+  fi: ['#003580', '#FFFFFF'],
+  fr: ['#002395', '#FFFFFF', '#ED2939'],
+  ga: ['#009E60', '#FCD116', '#3A75C4'],
+  ge: ['#FFFFFF', '#FF0000'],
+  de: ['#000000', '#DD0000', '#FFCE00'],
+  gh: ['#006B3F', '#FCD116', '#CE1126'],
+  gr: ['#0D5EAF', '#FFFFFF'],
+  gn: ['#CE1126', '#FCD116', '#009460'],
+  hn: ['#0073CF', '#FFFFFF'],
+  hu: ['#CE2939', '#FFFFFF', '#436F4D'],
+  id: ['#CE1126', '#FFFFFF'],
+  in: ['#FF9933', '#FFFFFF', '#138808'],
+  ie: ['#169B62', '#FFFFFF', '#FF883E'],
+  ir: ['#239F40', '#FFFFFF', '#DA0000'],
+  iq: ['#CE1126', '#FFFFFF', '#000000'],
+  il: ['#FFFFFF', '#0038B8'],
+  it: ['#003087', '#FFFFFF'],
+  jm: ['#000000', '#FDB913', '#006B3F'],
+  jp: ['#FFFFFF', '#BC002D'],
+  jo: ['#007A3D', '#FFFFFF', '#CE1126'],
+  ke: ['#006600', '#FFFFFF', '#BB0000'],
+  kp: ['#024FA2', '#FFFFFF', '#BE0000'],
+  kr: ['#FFFFFF', '#003478', '#CD2E3A'],
+  lv: ['#9E3039', '#FFFFFF'],
+  lt: ['#FDB913', '#006A44', '#C1272D'],
+  lu: ['#EF3340', '#FFFFFF', '#00A3E0'],
+  ma: ['#C1272D', '#006233'],
+  mk: ['#CE2028', '#F7E30A'],
+  ml: ['#14B53A', '#FCD116', '#CE1126'],
+  me: ['#D4AF37', '#D31F26'],
+  mx: ['#006847', '#FFFFFF', '#CE1126'],
+  my: ['#CC0001', '#FFFFFF', '#006ECC'],
+  ng: ['#008751', '#FFFFFF'],
+  ni: ['#FFFFFF', '#3E8FDD'],
+  nl: ['#FF6600', '#FFFFFF'],
+  no: ['#EF2B2D', '#FFFFFF', '#002868'],
+  nz: ['#00247D', '#FFFFFF', '#CC142B'],
+  pa: ['#FFFFFF', '#005293', '#DA121A'],
+  pe: ['#D91023', '#FFFFFF'],
+  pl: ['#FFFFFF', '#DC143C'],
+  pt: ['#006600', '#FF0000'],
+  ps: ['#000000', '#FFFFFF', '#007A3D'],
+  py: ['#D52B1E', '#FFFFFF', '#0038A8'],
+  qa: ['#8D1B3D', '#FFFFFF'],
+  ro: ['#002B7F', '#FCD116', '#CE1126'],
+  ru: ['#FFFFFF', '#0039A6', '#D52B1E'],
+  sa: ['#165816', '#FFFFFF'],
+  sn: ['#00853F', '#FDEF42', '#E31B23'],
+  rs: ['#C6363C', '#0C4076', '#FFFFFF'],
+  sk: ['#FFFFFF', '#0B4EA2', '#EE1C25'],
+  si: ['#003DA5', '#FFFFFF', '#003DA5'],
+  za: ['#007A4D', '#FFB81C', '#001489'],
+  se: ['#006AA7', '#FECC02'],
+  ch: ['#FF0000', '#FFFFFF'],
+  sy: ['#CE1126', '#FFFFFF', '#007A3D'],
+  th: ['#A51931', '#F4F5F8', '#2D2A4A'],
+  tn: ['#E70013', '#FFFFFF'],
+  tr: ['#E30A17', '#FFFFFF'],
+  ua: ['#005BBB', '#FFD500'],
+  uy: ['#5EB6E4', '#FFFFFF'],
+  us: ['#BF0A30', '#FFFFFF', '#002868'],
+  uz: ['#1EB53A', '#FFFFFF', '#0099B5'],
+  ve: ['#CF142B', '#003893', '#009E60'],
+  vn: ['#DA251D', '#FFCD00'],
+  'gb-eng': ['#FFFFFF', '#CF091D'],
+  'gb-sct': ['#003087', '#FFFFFF'],
+  'gb-wls': ['#C8102E', '#FFFFFF', '#00AB39'],
+};
+
+function getTeamColors(code) {
+  return TEAM_COLORS[code] || ['#FFD700', '#FFFFFF', '#FF6B35'];
+}
+
+let confettiRAF = null;
+let confettiCanvas = null;
+
+function startConfetti(teamCode) {
+  // Already running for same team — no-op
+  if (confettiRAF && confettiCanvas) return;
+  stopConfetti();
+
+  const colors = getTeamColors(teamCode);
+  const canvas = document.createElement('canvas');
+  canvas.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:50;';
+  document.body.appendChild(canvas);
+  confettiCanvas = canvas;
+  const ctx = canvas.getContext('2d');
+
+  const N = 140;
+  const pieces = [];
+  function makePiece(randomY) {
+    return {
+      x: Math.random() * window.innerWidth,
+      y: randomY ? Math.random() * window.innerHeight : -20,
+      w: 5 + Math.random() * 7,
+      h: 9 + Math.random() * 7,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      speed: 1.2 + Math.random() * 2.2,
+      angle: Math.random() * Math.PI * 2,
+      spin: (Math.random() - 0.5) * 0.14,
+      drift: (Math.random() - 0.5) * 0.7,
+      opacity: 0.75 + Math.random() * 0.25,
+    };
+  }
+  for (let i = 0; i < N; i++) pieces.push(makePiece(true));
+
+  function draw() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    for (const p of pieces) {
+      ctx.save();
+      ctx.globalAlpha = p.opacity;
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.angle);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
+      p.y += p.speed;
+      p.x += p.drift;
+      p.angle += p.spin;
+      if (p.y > canvas.height + 20) {
+        p.y = -20;
+        p.x = Math.random() * canvas.width;
+      }
+    }
+    confettiRAF = requestAnimationFrame(draw);
+  }
+  draw();
+}
+
+export function stopConfetti() {
+  if (confettiRAF) {
+    cancelAnimationFrame(confettiRAF);
+    confettiRAF = null;
+  }
+  if (confettiCanvas) {
+    confettiCanvas.remove();
+    confettiCanvas = null;
+  }
+}
+
 /* ── Celebration ── */
 
 function renderCelebration(state) {
@@ -1303,10 +1484,12 @@ function renderCelebration(state) {
   const champ = tournament.champion;
   const final = tournament.knockout.final;
 
+  startConfetti(champ.code);
+
   return el('div', {
     className: 'text-center py-4',
     children: [
-      el('div', { text: '\ud83c\udfc6', className: 'text-6xl mb-4 animate-float' }),
+      el('div', { text: '\ud83c\udfc6', className: 'text-6xl mb-4' }),
       el('h2', { text: '\u00a1Campe\u00f3n del Mundo!', className: 'text-2xl md:text-3xl font-extrabold mb-2' }),
       el('div', {
         className: 'flex items-center justify-center gap-3 mb-8',
