@@ -166,22 +166,38 @@ function renderDrawPhase(state) {
 
   // Ball reveal animation
   if (showingBall && ballTeam) {
+    // Rivals already drawn in the same group (excluding the current team)
+    const knownRivals = drawSequence
+      .slice(0, revealedCount)
+      .filter(d => d.group === ballGroup && d.team.code !== ballTeam.code);
+    const unknownCount = 3 - knownRivals.length; // groups have 4 teams total
+
     children.push(
       el('div', {
-        className: 'flex justify-center mb-4',
+        className: 'card p-5 mb-4 flex flex-col items-center gap-2 animate-slide-up',
         children: [
+          el('div', { className: 'flex items-center gap-2', children: [
+            flag(ballTeam.code, 28),
+            el('span', { text: ballTeam.name, className: 'text-base font-bold' }),
+          ]}),
+          ballGroup >= 0 ? el('span', {
+            text: `Grupo ${String.fromCharCode(65 + ballGroup)}`,
+            className: 'text-xs text-accent font-semibold uppercase tracking-wider',
+          }) : null,
           el('div', {
-            className: 'draw-ball',
+            className: 'mt-1 flex flex-col items-center gap-1',
             children: [
-              flag(ballTeam.code, 32),
-              el('span', { text: ballTeam.name, className: 'text-sm font-bold mt-1' }),
-              ballGroup >= 0 ? el('span', {
-                text: `Grupo ${String.fromCharCode(65 + ballGroup)}`,
-                className: 'text-[10px] text-text-muted',
-              }) : null,
-            ].filter(Boolean),
+              ...knownRivals.map(d => el('div', {
+                className: 'flex items-center gap-1.5 text-xs text-text-muted',
+                children: [flag(d.team.code, 14), el('span', { text: d.team.name })],
+              })),
+              ...Array.from({ length: unknownCount }, () => el('span', {
+                text: '???',
+                className: 'text-xs text-text-muted/50',
+              })),
+            ],
           }),
-        ],
+        ].filter(Boolean),
       })
     );
   }
