@@ -1,3 +1,5 @@
+import { EPOCH } from '../constants.js';
+
 /**
  * Mulberry32 — Deterministic PRNG
  * Given the same seed, always produces the same sequence.
@@ -64,8 +66,10 @@ export function hashSeed(str) {
 }
 
 /**
- * Combine multiple values into a single seed
+ * Combine multiple values into a single seed.
+ * EPOCH is used as a global "world seed" so that dev and prod
+ * produce completely different tournaments for the same edition number.
  */
 export function combineSeed(...values) {
-  return hashSeed(values.join(':'));
+  return hashSeed([EPOCH, ...values].join(':'));
 }

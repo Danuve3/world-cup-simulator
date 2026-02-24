@@ -1,10 +1,19 @@
 // World Cup Simulator — Constants
 // All times in minutes
 
-/** PRNG epoch: injected at build time via VITE_EPOCH env var */
+/** Production epoch — injected by CI via VITE_EPOCH env var */
+const PROD_EPOCH = 1771358400000; // 2026-06-17 20:00 UTC
+
+/**
+ * Dev epoch — fixed, ~4 cycles before PROD_EPOCH so dev tournaments
+ * are completely different from production ones (different PRNG seeds).
+ * Never changes between `npm run dev` sessions.
+ */
+const DEV_EPOCH = 1768939200000; // 2026-01-20 ~UTC (PROD - 4 cycles)
+
 export const EPOCH = import.meta.env.VITE_EPOCH
   ? Number(import.meta.env.VITE_EPOCH)
-  : 1771358400000; // 2026-02-17 20:00:00 UTC
+  : DEV_EPOCH;
 
 /** Total duration of one World Cup cycle in minutes */
 export const CYCLE_DURATION = 10080; // 7 days
