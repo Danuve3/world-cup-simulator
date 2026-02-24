@@ -1,7 +1,7 @@
 import { el, flag, formatMinutes, formatCountdown, countdownDisplay, formatTime, getEditionYear } from '../components.js';
 import { SCHEDULE, DRAW_COUNTDOWN_MS, DRAW_DISPLAY_MS } from '../../constants.js';
 import { TEAMS } from '../../engine/teams.js';
-import { getMatchDisplayState } from '../../engine/timeline.js';
+import { getMatchDisplayState, getCompletedMatchIds } from '../../engine/timeline.js';
 import { getNow } from '../../engine/simulation.js';
 import { getSquadForEdition } from '../../engine/playerEvolution.js';
 
@@ -78,9 +78,36 @@ export function renderDashboard(container, state) {
 
 /* ── Hero ── */
 
+const BADGE_LABELS = {
+  DRAW:        'Sorteo',
+  GROUP_STAGE: 'Fase de grupos',
+  REST_1:      'Octavos de final',
+  ROUND_16:    'Octavos de final',
+  REST_2:      'Cuartos de final',
+  QUARTER:     'Cuartos de final',
+  REST_3:      'Semifinal',
+  SEMI:        'Semifinal',
+  REST_4:      'Tercer y cuarto puesto',
+  THIRD_PLACE: 'Tercer y cuarto puesto',
+  REST_5:      'Final',
+  FINAL:       'Final',
+  CELEBRATION: 'Finalizado',
+  COUNTDOWN:   'Finalizado',
+};
+
+function getBadgeLabel(phaseKey) {
+  return BADGE_LABELS[phaseKey] || phaseKey;
+}
+
+function computeTournamentProgress(cycleMinute) {
+  if (cycleMinute < SCHEDULE.GROUP_STAGE.start) return 0;
+  const completed = getCompletedMatchIds(cycleMinute).length;
+  return Math.min(100, Math.round(completed / 64 * 100));
+}
+
 function createHero(state) {
-  const { phase, tournament, edition } = state;
-  const progress = Math.min(100, Math.round(phase.phaseProgress * 100));
+  const { phase, tournament, edition, cycleMinute } = state;
+  const progress = computeTournamentProgress(cycleMinute);
 
   return el('div', {
     className: 'card p-5 md:p-6 mb-6',
@@ -111,7 +138,7 @@ function createHero(state) {
             className: `pill ${getPhaseStyle(phase.phase)}`,
             children: [
               isActivePhase(phase.phase) ? el('span', { className: 'live-dot' }) : null,
-              el('span', { text: phase.label }),
+              el('span', { text: getBadgeLabel(phase.phase) }),
             ].filter(Boolean),
           }),
         ],
@@ -133,7 +160,7 @@ function createHero(state) {
 }
 
 function isActivePhase(phase) {
-  return ['GROUP_STAGE', 'ROUND_16', 'QUARTER', 'SEMI', 'FINAL', 'THIRD_PLACE'].includes(phase);
+  return ['DRAW', 'GROUP_STAGE', 'ROUND_16', 'QUARTER', 'SEMI', 'FINAL', 'THIRD_PLACE'].includes(phase);
 }
 
 function getPhaseStyle(phase) {
