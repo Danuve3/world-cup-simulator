@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { getPhaseAtMinute, getLiveMatches, getGroupMatchTiming, getKnockoutMatchTiming } from '../src/engine/timeline.js';
+import { SCHEDULE } from '../src/constants.js';
 
 describe('Timeline', () => {
   it('minute 0 is in DRAW phase', () => {
@@ -44,7 +45,7 @@ describe('Timeline', () => {
     for (let day = 0; day < 3; day++) {
       for (let g = 0; g < 8; g++) {
         const timing = getGroupMatchTiming(day, g, 0);
-        expect(timing.startMin).toBeGreaterThanOrEqual(60);
+        expect(timing.startMin).toBeGreaterThanOrEqual(SCHEDULE.GROUP_STAGE.start);
         expect(timing.endMin).toBeLessThanOrEqual(5820);
         expect(timing.endMin).toBeGreaterThan(timing.startMin);
       }
@@ -65,7 +66,7 @@ describe('Timeline', () => {
 
 describe('Live matches', () => {
   it('no live matches during draw', () => {
-    const live = getLiveMatches(15);
+    const live = getLiveMatches(SCHEDULE.DRAW.start + 1);
     expect(live.length).toBe(0);
   });
 

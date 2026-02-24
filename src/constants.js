@@ -18,10 +18,15 @@ export const EPOCH = import.meta.env.VITE_EPOCH
 /** Total duration of one World Cup cycle in minutes */
 export const CYCLE_DURATION = 10080; // 7 days
 
+/** Draw timing constants */
+export const DRAW_COUNTDOWN_MS = 5000; // 5-second countdown before each reveal
+export const DRAW_DISPLAY_MS   = 3000; // 3-second display after each reveal
+// Total cycle per team: 8 s × 32 teams = 256 s (fits within the 5-min DRAW phase)
+
 /** Schedule phases (start minute, end minute) — all times are multiples of 60 so matches start at :00 */
 export const SCHEDULE = {
-  DRAW:        { start: 0,    end: 60,   label: 'Sorteo' },
-  GROUP_STAGE: { start: 60,   end: 5820, label: 'Fase de Grupos' },
+  DRAW:        { start: 0,    end: 5,    label: 'Sorteo' },
+  GROUP_STAGE: { start: 5,    end: 5820, label: 'Fase de Grupos' },
   REST_1:      { start: 5820, end: 5940, label: 'Descanso' },
   ROUND_16:    { start: 5940, end: 6660, label: 'Octavos de Final' },
   REST_2:      { start: 6660, end: 6780, label: 'Descanso' },

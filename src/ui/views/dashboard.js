@@ -1,5 +1,5 @@
 import { el, flag, formatMinutes, formatCountdown, countdownDisplay, formatTime, getEditionYear } from '../components.js';
-import { SCHEDULE } from '../../constants.js';
+import { SCHEDULE, DRAW_COUNTDOWN_MS, DRAW_DISPLAY_MS } from '../../constants.js';
 import { TEAMS } from '../../engine/teams.js';
 import { getMatchDisplayState } from '../../engine/timeline.js';
 import { getNow } from '../../engine/simulation.js';
@@ -13,42 +13,37 @@ export function renderDashboard(container, state) {
 
   // Optimized draw phase: skip full re-render when only countdown needs updating
   if (phase.phase === 'DRAW') {
+    const CYCLE_MS = DRAW_COUNTDOWN_MS + DRAW_DISPLAY_MS;
     const drawSequence = state.tournament.draw.drawSequence;
     const totalTeams = drawSequence.length;
-    const drawDurationMs = (SCHEDULE.DRAW.end - SCHEDULE.DRAW.start) * 60 * 1000;
-    const revealIntervalMs = drawDurationMs / totalTeams;
-    const phaseElapsedMs = (state.timestamp - state.cycleStart) - (SCHEDULE.DRAW.start * 60 * 1000);
-    const revealedCount = Math.min(totalTeams, Math.max(0, Math.floor(phaseElapsedMs / revealIntervalMs)));
+    const phaseElapsedMs = Math.max(0, (state.timestamp - state.cycleStart) - (SCHEDULE.DRAW.start * 60 * 1000));
+    const cycleElapsed = phaseElapsedMs % CYCLE_MS;
+    const inDisplayPhase = cycleElapsed >= DRAW_COUNTDOWN_MS;
+    const cycle = Math.floor(phaseElapsedMs / CYCLE_MS);
+    const revealedCount = Math.min(totalTeams, inDisplayPhase ? cycle + 1 : cycle);
+    const nowShowingBall = inDisplayPhase && revealedCount > 0 && revealedCount <= totalTeams;
 
-    if (revealedCount === lastDrawRenderedCount && container.childNodes.length > 0) {
-      updateDrawCountdownInPlace(state, revealedCount, totalTeams);
+    // Only skip re-render if both revealedCount AND display state are unchanged
+    if (revealedCount === lastDrawRenderedCount && nowShowingBall === showingBall && container.childNodes.length > 0) {
+      if (!nowShowingBall && revealedCount < totalTeams) {
+        updateDrawCountdownInPlace(Math.max(0, DRAW_COUNTDOWN_MS - cycleElapsed));
+      }
       return;
     }
 
-    // New team revealed — trigger ball animation
-    if (revealedCount > lastDrawRenderedCount && lastDrawRenderedCount >= 0 && revealedCount <= totalTeams) {
-      const newlyRevealed = drawSequence[revealedCount - 1];
-      if (newlyRevealed) {
-        ballTeam = newlyRevealed.team;
-        ballGroup = newlyRevealed.group;
-        showingBall = true;
-        if (drawBallTimeoutId) clearTimeout(drawBallTimeoutId);
-        drawBallTimeoutId = setTimeout(() => {
-          showingBall = false;
-          drawBallTimeoutId = null;
-          lastDrawRenderedCount = -1; // Force re-render on next tick
-        }, 1800);
+    showingBall = nowShowingBall;
+    if (showingBall) {
+      const revealed = drawSequence[revealedCount - 1];
+      if (revealed) {
+        ballTeam = revealed.team;
+        ballGroup = revealed.group;
       }
     }
 
     lastDrawRenderedCount = revealedCount;
   } else {
     lastDrawRenderedCount = -1;
-    if (drawBallTimeoutId) {
-      clearTimeout(drawBallTimeoutId);
-      drawBallTimeoutId = null;
-      showingBall = false;
-    }
+    showingBall = false;
   }
 
   container.innerHTML = '';
@@ -145,18 +140,19 @@ let showingBall = false;
 let ballTeam = null;
 let ballGroup = -1;
 let lastDrawRenderedCount = -1;
-let drawBallTimeoutId = null;
 let drawTeamsExpanded = false;
 
 function renderDrawPhase(state) {
   const { tournament, phase, cycleStart, timestamp } = state;
   const drawSequence = tournament.draw.drawSequence;
   const totalTeams = drawSequence.length;
-  const drawDurationMs = (SCHEDULE.DRAW.end - SCHEDULE.DRAW.start) * 60 * 1000;
-  const revealIntervalMs = drawDurationMs / totalTeams;
-  const phaseElapsedMs = (timestamp - cycleStart) - (SCHEDULE.DRAW.start * 60 * 1000);
-  const revealedCount = Math.min(totalTeams, Math.max(0, Math.floor(phaseElapsedMs / revealIntervalMs)));
-  const nextRevealMs = (revealedCount + 1) * revealIntervalMs - phaseElapsedMs;
+  const CYCLE_MS = DRAW_COUNTDOWN_MS + DRAW_DISPLAY_MS;
+  const phaseElapsedMs = Math.max(0, (timestamp - cycleStart) - (SCHEDULE.DRAW.start * 60 * 1000));
+  const cycleElapsed = phaseElapsedMs % CYCLE_MS;
+  const inDisplayPhase = cycleElapsed >= DRAW_COUNTDOWN_MS;
+  const cycle = Math.floor(phaseElapsedMs / CYCLE_MS);
+  const revealedCount = Math.min(totalTeams, inDisplayPhase ? cycle + 1 : cycle);
+  const countdownMsLeft = Math.max(0, DRAW_COUNTDOWN_MS - cycleElapsed);
 
   const children = [
     el('div', {
@@ -191,13 +187,12 @@ function renderDrawPhase(state) {
   }
 
   if (revealedCount < totalTeams && !showingBall) {
-    const msLeft = Math.max(0, nextRevealMs);
     children.push(
       el('div', {
         className: 'card p-5 mb-5 text-center',
         children: [
           el('p', { text: 'Siguiente equipo en', className: 'text-xs text-text-muted mb-3' }),
-          el('div', { id: 'draw-countdown-value', children: [countdownDisplay(msLeft, { size: 'sm' })] }),
+          el('div', { id: 'draw-countdown-value', children: [countdownDisplay(countdownMsLeft, { size: 'sm' })] }),
         ],
       })
     );
@@ -298,16 +293,9 @@ function renderDrawPhase(state) {
   return el('div', { children });
 }
 
-function updateDrawCountdownInPlace(state, revealedCount, totalTeams) {
+function updateDrawCountdownInPlace(msLeft) {
   const countdownEl = document.getElementById('draw-countdown-value');
   if (!countdownEl) return;
-
-  const drawDurationMs = (SCHEDULE.DRAW.end - SCHEDULE.DRAW.start) * 60 * 1000;
-  const revealIntervalMs = drawDurationMs / totalTeams;
-  const phaseElapsedMs = (state.timestamp - state.cycleStart) - (SCHEDULE.DRAW.start * 60 * 1000);
-  const nextRevealMs = (revealedCount + 1) * revealIntervalMs - phaseElapsedMs;
-  const msLeft = Math.max(0, nextRevealMs);
-
   countdownEl.innerHTML = '';
   countdownEl.appendChild(countdownDisplay(msLeft, { size: 'sm' }));
 }
