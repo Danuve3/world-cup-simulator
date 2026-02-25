@@ -1,4 +1,5 @@
 import { el, flag, formatMinutes, formatCountdown, countdownDisplay, formatTime, getEditionYear } from '../components.js';
+import { navigate } from '../router.js';
 import { SCHEDULE, DRAW_COUNTDOWN_MS, DRAW_DISPLAY_MS } from '../../constants.js';
 import { TEAMS } from '../../engine/teams.js';
 import { getMatchDisplayState, getCompletedMatchIds, getKnockoutMatchTiming } from '../../engine/timeline.js';
@@ -697,7 +698,7 @@ function createLiveMatchCard(match, edition) {
 
   // Finished match: compact card, click to expand goal detail
   if (matchPhase === 'finalizado') {
-    const detailEl = createMatchGoalDetail(events, match.extraTime);
+    const detailEl = createMatchGoalDetail(events, match.extraTime, match.teamA?.code, match.teamB?.code);
     detailEl.style.display = 'none';
     let expanded = false;
     let toggleEl;
@@ -824,7 +825,19 @@ function createLiveMatchCard(match, edition) {
 }
 
 /** Detail panel for finished matches: goal list (left/right) + static timeline */
-function createMatchGoalDetail(events, extraTime) {
+function dashScorerEl(e, teamCode, side, colorClass) {
+  const text = e.scorerName
+    ? (side === 'A' ? `⚽ ${e.minute}' ${e.scorerName}` : `${e.scorerName} ${e.minute}' ⚽`)
+    : `⚽ ${e.minute}'`;
+  const canNav = e.scorerId && teamCode;
+  return el('div', {
+    text,
+    className: `text-[11px] ${colorClass} font-medium truncate${canNav ? ' cursor-pointer hover:underline' : ''}`,
+    events: canNav ? { click: (ev) => { ev.stopPropagation(); navigate(`/teams/${teamCode}/${e.scorerId}`); } } : {},
+  });
+}
+
+function createMatchGoalDetail(events, extraTime, teamACode, teamBCode) {
   const maxMinute = extraTime ? 120 : 90;
   const pct = min => `${Math.min(100, (min / maxMinute) * 100).toFixed(1)}%`;
   const goalsA = events.filter(e => e.team === 'A');
@@ -838,9 +851,9 @@ function createMatchGoalDetail(events, extraTime) {
         : el('div', {
             className: 'flex gap-3 mb-2',
             children: [
-              el('div', { className: 'flex-1 flex flex-col gap-0.5 min-w-0', children: goalsA.map(e => el('div', { text: e.scorerName ? `⚽ ${e.minute}' ${e.scorerName}` : `⚽ ${e.minute}'`, className: 'text-[11px] text-accent font-medium truncate' })) }),
+              el('div', { className: 'flex-1 flex flex-col gap-0.5 min-w-0', children: goalsA.map(e => dashScorerEl(e, teamACode, 'A', 'text-accent')) }),
               el('div', { className: 'shrink-0 w-12' }),
-              el('div', { className: 'flex-1 flex flex-col gap-0.5 items-end min-w-0', children: goalsB.map(e => el('div', { text: e.scorerName ? `${e.scorerName} ${e.minute}' ⚽` : `⚽ ${e.minute}'`, className: 'text-[11px] text-live font-medium truncate' })) }),
+              el('div', { className: 'flex-1 flex flex-col gap-0.5 items-end min-w-0', children: goalsB.map(e => dashScorerEl(e, teamBCode, 'B', 'text-live')) }),
             ],
           }),
       el('div', {
@@ -865,10 +878,15 @@ function createGoalFeed(events, match) {
 
   const goalEntry = (e, side) => {
     const isA = side === 'A';
-    const label = e.scorerName ? `⚽ ${e.minute}' ${e.scorerName}` : `⚽ ${e.minute}'`;
+    const teamCode = isA ? match.teamA?.code : match.teamB?.code;
+    const label = e.scorerName
+      ? (isA ? `⚽ ${e.minute}' ${e.scorerName}` : `${e.scorerName} ${e.minute}' ⚽`)
+      : `⚽ ${e.minute}'`;
+    const canNav = e.scorerId && teamCode;
     return el('div', {
-      className: `flex items-center gap-1 text-[11px] font-medium truncate ${isA ? 'text-accent' : 'text-live justify-end'}`,
+      className: `flex items-center gap-1 text-[11px] font-medium truncate ${isA ? 'text-accent' : 'text-live justify-end'}${canNav ? ' cursor-pointer hover:underline' : ''}`,
       children: [el('span', { text: label, className: 'truncate' })],
+      events: canNav ? { click: (ev) => { ev.stopPropagation(); navigate(`/teams/${teamCode}/${e.scorerId}`); } } : {},
     });
   };
 
@@ -1223,7 +1241,8 @@ function createTopScorersWidget(liveEditionGoals) {
           const { player, goals } = entry;
           const rankColor = medalColors[i] || 'text-text-muted';
           return el('div', {
-            className: `flex items-center gap-3 px-4 py-2.5${i < top5.length - 1 ? ' border-b border-border-subtle' : ''}`,
+            className: `flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-bg-surface/50${i < top5.length - 1 ? ' border-b border-border-subtle' : ''}`,
+            events: { click: () => navigate(`/teams/${player.teamCode}/${player.id}`) },
             children: [
               el('span', {
                 text: String(i + 1),
@@ -1269,7 +1288,7 @@ function createRecentMatchCard(m) {
   const bWon = m.goalsB > m.goalsA;
 
   const key = `${m.teamA?.code}-${m.teamB?.code}`;
-  const detailEl = createMatchGoalDetail(m.events || [], m.extraTime);
+  const detailEl = createMatchGoalDetail(m.events || [], m.extraTime, m.teamA?.code, m.teamB?.code);
   detailEl.style.display = expandedRecentMatches.has(key) ? 'block' : 'none';
 
   return el('div', {

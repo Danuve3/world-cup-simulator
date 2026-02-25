@@ -1,10 +1,23 @@
 import { el, flag, createPenaltyDisplay } from '../components.js';
+import { navigate } from '../router.js';
 import { getKnockoutMatchTiming, getGroupMatchTiming } from '../../engine/timeline.js';
 import { computeStandings } from '../../engine/group-stage.js';
 import { SCHEDULE, DRAW_COUNTDOWN_MS, DRAW_DISPLAY_MS } from '../../constants.js';
 
 // Persistent expanded state across re-renders
 const expandedMatchIds = new Set();
+
+function bracketScorerEl(e, teamCode, side, colorClass) {
+  const text = e.scorerName
+    ? (side === 'A' ? `⚽ ${e.minute}' ${e.scorerName}` : `${e.scorerName} ${e.minute}' ⚽`)
+    : `⚽ ${e.minute}'`;
+  const canNav = e.scorerId && teamCode;
+  return el('div', {
+    text,
+    className: `text-[10px] ${colorClass} font-medium truncate${canNav ? ' cursor-pointer hover:underline' : ''}`,
+    events: canNav ? { click: (ev) => { ev.stopPropagation(); navigate(`/teams/${teamCode}/${e.scorerId}`); } } : {},
+  });
+}
 
 function createMatchTimeline(m) {
   const events = m.events || [];
@@ -21,9 +34,9 @@ function createMatchTimeline(m) {
         : el('div', {
             className: 'flex gap-2 mb-1',
             children: [
-              el('div', { className: 'flex-1 flex flex-col gap-0.5 min-w-0', children: goalsA.map(e => el('div', { text: e.scorerName ? `⚽ ${e.minute}' ${e.scorerName}` : `⚽ ${e.minute}'`, className: 'text-[10px] text-accent font-medium truncate' })) }),
+              el('div', { className: 'flex-1 flex flex-col gap-0.5 min-w-0', children: goalsA.map(e => bracketScorerEl(e, m.teamA?.code, 'A', 'text-accent')) }),
               el('div', { className: 'shrink-0 w-4' }),
-              el('div', { className: 'flex-1 flex flex-col gap-0.5 items-end min-w-0', children: goalsB.map(e => el('div', { text: e.scorerName ? `${e.scorerName} ${e.minute}' ⚽` : `${e.minute}' ⚽`, className: 'text-[10px] text-live font-medium truncate' })) }),
+              el('div', { className: 'flex-1 flex flex-col gap-0.5 items-end min-w-0', children: goalsB.map(e => bracketScorerEl(e, m.teamB?.code, 'B', 'text-live')) }),
             ],
           }),
       el('div', {

@@ -1,4 +1,5 @@
 import { el, flag, getEditionYear, createPenaltyDisplay } from '../components.js';
+import { navigate } from '../router.js';
 import { getLiveStats } from '../../engine/simulation.js';
 import { simulateTournament } from '../../engine/tournament.js';
 import { getTeamByCode, TEAMS } from '../../engine/teams.js';
@@ -421,7 +422,7 @@ function createAllTimeRanking(ranking, liveTeamCodes, rankingDeltas) {
   });
 }
 
-function createMatchDetail(m) {
+function createMatchDetail(m, edition) {
   const events = m.events || [];
   const maxMinute = m.extraTime ? 120 : 90;
   const pct = min => `${Math.min(100, (min / maxMinute) * 100).toFixed(1)}%`;
@@ -436,15 +437,23 @@ function createMatchDetail(m) {
         : el('div', {
             className: 'flex gap-2 mb-1',
             children: [
-              el('div', { className: 'flex-1 flex flex-col gap-0.5', children: goalsA.map(e => el('div', {
-                text: e.scorerName ? `⚽ ${e.minute}' ${e.scorerName}` : `⚽ ${e.minute}'`,
-                className: 'text-[10px] text-accent font-medium truncate',
-              })) }),
+              el('div', { className: 'flex-1 flex flex-col gap-0.5', children: goalsA.map(e => {
+                const canNav = e.scorerId && m.teamA?.code && edition;
+                return el('div', {
+                  text: e.scorerName ? `⚽ ${e.minute}' ${e.scorerName}` : `⚽ ${e.minute}'`,
+                  className: `text-[10px] text-accent font-medium truncate${canNav ? ' cursor-pointer hover:underline' : ''}`,
+                  events: canNav ? { click: (ev) => { ev.stopPropagation(); navigate(`/history/${edition}/${m.teamA.code}/${e.scorerId}`); } } : {},
+                });
+              }) }),
               el('div', { className: 'shrink-0 w-8' }),
-              el('div', { className: 'flex-1 flex flex-col gap-0.5 items-end', children: goalsB.map(e => el('div', {
-                text: e.scorerName ? `${e.scorerName} ${e.minute}' ⚽` : `${e.minute}' ⚽`,
-                className: 'text-[10px] text-live font-medium truncate',
-              })) }),
+              el('div', { className: 'flex-1 flex flex-col gap-0.5 items-end', children: goalsB.map(e => {
+                const canNav = e.scorerId && m.teamB?.code && edition;
+                return el('div', {
+                  text: e.scorerName ? `${e.scorerName} ${e.minute}' ⚽` : `${e.minute}' ⚽`,
+                  className: `text-[10px] text-live font-medium truncate${canNav ? ' cursor-pointer hover:underline' : ''}`,
+                  events: canNav ? { click: (ev) => { ev.stopPropagation(); navigate(`/history/${edition}/${m.teamB.code}/${e.scorerId}`); } } : {},
+                });
+              }) }),
             ],
           }),
       el('div', {
@@ -476,7 +485,7 @@ function createMatchList(title, wins) {
           const key = `${win.edition}-${win.matchId}`;
           const isExpanded = expandedMatchIds.has(key);
 
-          const detailEl = createMatchDetail(win);
+          const detailEl = createMatchDetail(win, win.edition);
           detailEl.style.display = isExpanded ? 'block' : 'none';
 
           const card = el('div', {
@@ -561,7 +570,8 @@ function createPlayerEditionScorers(entries) {
       ...entries.map((entry, i) => {
         const year = getEditionYear(entry.edition);
         return el('div', {
-          className: 'flex items-center gap-1 px-4 py-2 list-row',
+          className: 'flex items-center gap-1 px-4 py-2 list-row cursor-pointer hover:bg-bg-surface/50',
+          events: { click: () => navigate(`/history/${entry.edition}/${entry.player.teamCode}/${entry.player.id}`) },
           children: [
             el('span', { text: `${i + 1}`, className: `w-6 shrink-0 text-[10px] tabular-nums ${i < 3 ? 'text-accent font-bold' : 'text-text-muted'}` }),
             flag(entry.player.teamCode, 18),
@@ -595,7 +605,8 @@ function createMvpRanking(entries) {
       }),
       ...entries.map((entry, i) =>
         el('div', {
-          className: 'flex items-center gap-1 px-4 py-2 list-row',
+          className: 'flex items-center gap-1 px-4 py-2 list-row cursor-pointer hover:bg-bg-surface/50',
+          events: { click: () => navigate(`/history/${entry.editions[entry.editions.length - 1]}/${entry.player.teamCode}/${entry.player.id}`) },
           children: [
             el('span', { text: `${i + 1}`, className: `w-6 shrink-0 text-[10px] tabular-nums ${i < 3 ? 'text-accent font-bold' : 'text-text-muted'}` }),
             flag(entry.player.teamCode, 18),
@@ -639,7 +650,8 @@ function createAllTimeScorers(allEntries) {
   function createRow(entry, i) {
     const topN = entry.totalGoals;
     return el('div', {
-      className: 'flex items-center gap-1 px-4 py-2 list-row',
+      className: 'flex items-center gap-1 px-4 py-2 list-row cursor-pointer hover:bg-bg-surface/50',
+      events: { click: () => navigate(`/history/${entry.editions[entry.editions.length - 1]}/${entry.player.teamCode}/${entry.player.id}`) },
       children: [
         el('span', { text: `${i + 1}`, className: `w-6 shrink-0 text-[10px] tabular-nums ${i < 3 ? 'text-accent font-bold' : 'text-text-muted'}` }),
         flag(entry.player.teamCode, 32),

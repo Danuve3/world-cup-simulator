@@ -321,7 +321,7 @@ function renderHistoryDetail(container, state, edition) {
                         className: 'text-[9px] text-text-muted uppercase tracking-wider font-semibold mt-1',
                         text: `Jornada ${day + 1}`,
                       }),
-                      ...dayMatches.map(m => createHistoryInlineMatch(m)),
+                      ...dayMatches.map(m => createHistoryInlineMatch(m, edition)),
                     ]
                   : []
               ),
@@ -347,18 +347,30 @@ function renderHistoryDetail(container, state, edition) {
     container.appendChild(
       el('div', {
         className: `grid grid-cols-1 ${round.matches.length > 2 ? 'sm:grid-cols-2 xl:grid-cols-4' : 'sm:grid-cols-2'} gap-2 mb-4`,
-        children: round.matches.map(m => createDetailMatch(m)),
+        children: round.matches.map(m => createDetailMatch(m, edition)),
       })
     );
   }
 }
 
-function createMatchTimeline(m) {
+function createMatchTimeline(m, edition) {
   const events = m.events || [];
   const maxMinute = m.extraTime ? 120 : 90;
   const pct = min => `${Math.min(100, (min / maxMinute) * 100).toFixed(1)}%`;
   const goalsA = events.filter(e => e.team === 'A');
   const goalsB = events.filter(e => e.team === 'B');
+
+  const histScorerEl = (e, teamCode, side, colorClass) => {
+    const text = e.scorerName
+      ? (side === 'A' ? `⚽ ${e.minute}' ${e.scorerName}` : `${e.scorerName} ${e.minute}' ⚽`)
+      : `⚽ ${e.minute}'`;
+    const canNav = e.scorerId && teamCode && edition != null;
+    return el('div', {
+      text,
+      className: `text-[10px] ${colorClass} font-medium truncate${canNav ? ' cursor-pointer hover:underline' : ''}`,
+      events: canNav ? { click: (ev) => { ev.stopPropagation(); navigate(`/history/${edition}/${teamCode}/${e.scorerId}`); } } : {},
+    });
+  };
 
   return el('div', {
     className: 'pt-2 pb-0.5 border-t border-border-subtle mt-2',
@@ -368,15 +380,9 @@ function createMatchTimeline(m) {
         : el('div', {
             className: 'flex gap-2 mb-1',
             children: [
-              el('div', { className: 'flex-1 flex flex-col gap-0.5', children: goalsA.map(e => el('div', {
-                text: e.scorerName ? `⚽ ${e.minute}' ${e.scorerName}` : `⚽ ${e.minute}'`,
-                className: 'text-[10px] text-accent font-medium truncate',
-              })) }),
+              el('div', { className: 'flex-1 flex flex-col gap-0.5', children: goalsA.map(e => histScorerEl(e, m.teamA?.code, 'A', 'text-accent')) }),
               el('div', { className: 'shrink-0 w-8' }),
-              el('div', { className: 'flex-1 flex flex-col gap-0.5 items-end', children: goalsB.map(e => el('div', {
-                text: e.scorerName ? `${e.scorerName} ${e.minute}' ⚽` : `${e.minute}' ⚽`,
-                className: 'text-[10px] text-live font-medium truncate',
-              })) }),
+              el('div', { className: 'flex-1 flex flex-col gap-0.5 items-end', children: goalsB.map(e => histScorerEl(e, m.teamB?.code, 'B', 'text-live')) }),
             ],
           }),
       el('div', {
@@ -394,8 +400,8 @@ function createMatchTimeline(m) {
   });
 }
 
-function withExpandableTimeline(m, rowEl) {
-  const detailEl = createMatchTimeline(m);
+function withExpandableTimeline(m, rowEl, edition) {
+  const detailEl = createMatchTimeline(m, edition);
   detailEl.style.display = expandedMatchIds.has(m.matchId) ? 'block' : 'none';
   rowEl.style.cursor = 'pointer';
   rowEl.addEventListener('click', () => {
@@ -410,7 +416,7 @@ function withExpandableTimeline(m, rowEl) {
   return el('div', { children: [rowEl, detailEl] });
 }
 
-function createDetailMatch(m) {
+function createDetailMatch(m, edition) {
   const aWon = m.winner === 'A';
   const bWon = m.winner === 'B';
 
@@ -451,7 +457,7 @@ function createDetailMatch(m) {
     ].filter(Boolean),
   });
 
-  return withExpandableTimeline(m, row);
+  return withExpandableTimeline(m, row, edition);
 }
 
 function createHistoryStandingsHeader() {
@@ -508,7 +514,7 @@ function createHistoryStandingsRow(row, i) {
   });
 }
 
-function createHistoryInlineMatch(m) {
+function createHistoryInlineMatch(m, edition) {
   const aWon = m.goalsA > m.goalsB;
   const bWon = m.goalsB > m.goalsA;
   const row = el('div', {
@@ -534,7 +540,7 @@ function createHistoryInlineMatch(m) {
       }),
     ],
   });
-  return withExpandableTimeline(m, row);
+  return withExpandableTimeline(m, row, edition);
 }
 
 function createAwardBadge(title, name, teamCode, sub) {
