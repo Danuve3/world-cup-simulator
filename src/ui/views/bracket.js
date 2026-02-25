@@ -98,11 +98,11 @@ function isPositionConfirmed(standings, position) {
   return false;
 }
 
-function sanitizeKnockout(ko, cycleMinute, groupStandings) {
+function sanitizeKnockout(ko, cycleMinuteExact, groupStandings) {
   const ph = name => ({ code: null, name });
   const isMatchDone = (round, idx) => {
     const t = getKnockoutMatchTiming(round, idx);
-    return t.endMin <= cycleMinute;
+    return t.endMin <= cycleMinuteExact;
   };
 
   const resolveGroupPos = (groupIndex, position) => {
@@ -166,7 +166,7 @@ function teamFlag(team, size) {
 export function renderBracket(container, state) {
   container.innerHTML = '';
 
-  const { tournament, cycleMinute } = state;
+  const { tournament, cycleMinute, cycleMinuteExact } = state;
 
   const drawDoneMs = tournament.draw.drawSequence.length * (DRAW_COUNTDOWN_MS + DRAW_DISPLAY_MS);
   const drawDone = cycleMinute * 60 * 1000 >= drawDoneMs;
@@ -190,16 +190,16 @@ export function renderBracket(container, state) {
   // Compute standings from completed group matches for bracket slot resolution
   const completedGroupMatches = tournament.groupStage.matches.filter(m => {
     const timing = getGroupMatchTiming(m.matchday, m.group, m.matchIndex);
-    return timing.endMin <= cycleMinute;
+    return timing.endMin <= cycleMinuteExact;
   });
   const groupStandings = computeStandings(tournament.draw.groups, completedGroupMatches);
 
-  const ko = sanitizeKnockout(tournament.knockout, cycleMinute, groupStandings);
+  const ko = sanitizeKnockout(tournament.knockout, cycleMinuteExact, groupStandings);
 
   // Determine which matches are completed
   const isComplete = (round, idx) => {
     const timing = getKnockoutMatchTiming(round, idx);
-    return timing.endMin <= cycleMinute;
+    return timing.endMin <= cycleMinuteExact;
   };
 
   // Check if final is done to show champion

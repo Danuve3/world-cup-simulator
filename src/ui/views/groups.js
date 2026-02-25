@@ -12,7 +12,7 @@ const expandedMatchIds = new Set();
 export function renderGroups(container, state) {
   container.innerHTML = '';
 
-  const { tournament, cycleMinute, liveMatches } = state;
+  const { tournament, cycleMinute, cycleMinuteExact, liveMatches } = state;
 
   // Show "sorteo en curso" until all teams are revealed (not just until DRAW phase ends)
   const drawDoneMs = tournament.draw.drawSequence.length * (DRAW_COUNTDOWN_MS + DRAW_DISPLAY_MS);
@@ -39,7 +39,7 @@ export function renderGroups(container, state) {
   // Filter to only completed matches (anti-spoiler)
   const completedMatches = matches.filter(m => {
     const timing = getGroupMatchTiming(m.matchday, m.group, m.matchIndex);
-    return timing.endMin <= cycleMinute;
+    return timing.endMin <= cycleMinuteExact;
   });
 
   // Live group matches (in progress right now)

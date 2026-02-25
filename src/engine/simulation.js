@@ -133,6 +133,7 @@ export function getCurrentState(timestamp) {
   return {
     edition,
     cycleMinute,
+    cycleMinuteExact,
     cycleStart,
     phase,
     tournament,
