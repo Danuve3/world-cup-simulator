@@ -1179,9 +1179,12 @@ function createUpcomingCard(match, state) {
               el('span', { text: match.teamA ? match.teamA.name : 'TBD', className: 'text-xs font-medium truncate' }),
             ].filter(Boolean),
           }),
-          el('span', {
-            text: 'VS',
-            className: 'score-num text-[10px] !min-w-[26px] !h-[26px] shrink-0',
+          el('div', {
+            className: 'flex flex-col items-center gap-0.5 shrink-0',
+            children: [
+              el('span', { text: 'VS', className: 'score-num text-[10px] !min-w-[26px] !h-[26px]' }),
+              el('span', { text: dateStr, className: 'text-[10px] text-text-muted tabular-nums whitespace-nowrap' }),
+            ],
           }),
           el('div', {
             className: 'flex items-center gap-1.5 flex-1 min-w-0 justify-end',
@@ -1189,15 +1192,6 @@ function createUpcomingCard(match, state) {
               el('span', { text: match.teamB ? match.teamB.name : 'TBD', className: 'text-xs font-medium truncate' }),
               match.teamB ? flag(match.teamB.code, 20) : null,
             ].filter(Boolean),
-          }),
-        ],
-      }),
-      el('div', {
-        className: 'text-center mt-1.5',
-        children: [
-          el('span', {
-            text: dateStr,
-            className: 'text-[11px] text-text-muted tabular-nums',
           }),
         ],
       }),
