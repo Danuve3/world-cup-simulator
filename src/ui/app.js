@@ -118,7 +118,10 @@ function createSidebar() {
           el('span', { text: '\u26bd', className: 'text-xl' }),
           el('div', {
             children: [
-              el('span', { text: 'World Cup', className: 'text-base font-bold block leading-tight' }),
+              el('div', { className: 'flex items-center gap-1.5 leading-tight', children: [
+                el('span', { text: 'World Cup', className: 'text-base font-bold' }),
+                ...(import.meta.env.DEV ? [el('span', { text: 'Dev', className: 'text-[10px] font-bold bg-red-600 text-white px-1 py-px rounded' })] : []),
+              ] }),
               el('span', { text: 'Simulator', className: 'text-[11px] text-text-muted block' }),
             ],
           }),
@@ -185,7 +188,10 @@ function createHeader() {
               el('div', {
                 className: 'flex flex-col',
                 children: [
-                  el('span', { text: 'World Cup', className: 'text-xs font-semibold leading-tight' }),
+                  el('div', { className: 'flex items-center gap-1 leading-tight', children: [
+                    el('span', { text: 'World Cup', className: 'text-xs font-semibold' }),
+                    ...(import.meta.env.DEV ? [el('span', { text: 'Dev', className: 'text-[9px] font-bold bg-red-600 text-white px-1 py-px rounded' })] : []),
+                  ] }),
                   el('span', { text: 'Simulator', className: 'text-[9px] text-accent leading-tight uppercase font-medium w-full block tracking-[0.1em]', style: { textAlign: 'justify', textAlignLast: 'justify' } }),
                 ],
               }),
