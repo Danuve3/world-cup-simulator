@@ -1054,8 +1054,8 @@ function computeEditionRating({ goals, matches, mins, started }, goldenBall = fa
   return Math.round(Math.max(5.0, Math.min(9.9, raw)) * 10) / 10;
 }
 
-// Expose setTimeOffset globally for debug
-if (typeof window !== 'undefined') {
+// Expose setTimeOffset globally for debug (dev only)
+if (typeof window !== 'undefined' && import.meta.env.DEV) {
   window.setTimeOffset = setTimeOffset;
   window.getCurrentState = getCurrentState;
 }
