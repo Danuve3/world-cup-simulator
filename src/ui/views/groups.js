@@ -277,7 +277,7 @@ function createInlineMatchResult(m, isLive) {
   const bWon = m.goalsB > m.goalsA;
 
   const row = el('div', {
-    className: `flex items-center gap-1.5 text-[11px]${isLive ? ' bg-yellow-500/10 -mx-1 px-1 rounded py-0.5' : ' cursor-pointer'}`,
+    className: `flex items-center gap-1.5 text-[11px] cursor-pointer${isLive ? ' bg-yellow-500/10 -mx-1 px-1 rounded py-0.5' : ''}`,
     children: [
       el('div', {
         className: 'flex items-center gap-1 flex-1 min-w-0 justify-end',
@@ -314,10 +314,8 @@ function createInlineMatchResult(m, isLive) {
     ],
   });
 
-  if (isLive) return row;
-
-  // Completed: wrap with clickable toggle for goal detail
-  const detailEl = createGroupMatchDetail(m);
+  // Both live and completed are expandable
+  const detailEl = createGroupMatchDetail(m, isLive);
   const isExpanded = expandedMatchIds.has(m.matchId);
   detailEl.style.display = isExpanded ? 'block' : 'none';
   row.addEventListener('click', () => {
@@ -332,18 +330,19 @@ function createInlineMatchResult(m, isLive) {
   return el('div', { children: [row, detailEl] });
 }
 
-function createGroupMatchDetail(m) {
+function createGroupMatchDetail(m, isLive = false) {
   const events = m.events || [];
   const maxMinute = m.extraTime ? 120 : 90;
   const pct = min => `${Math.min(100, (min / maxMinute) * 100).toFixed(1)}%`;
   const goalsA = events.filter(e => e.team === 'A');
   const goalsB = events.filter(e => e.team === 'B');
+  const cursorMinute = isLive ? Math.min(m.matchMinute ?? 0, maxMinute) : null;
 
   return el('div', {
     className: 'pt-1.5 pb-0.5',
     children: [
       events.length === 0
-        ? el('p', { text: 'Sin goles', className: 'text-[10px] text-text-muted text-center' })
+        ? el('p', { text: isLive ? 'Sin goles aún' : 'Sin goles', className: 'text-[10px] text-text-muted text-center' })
         : el('div', {
             className: 'flex gap-2 mb-1',
             children: [
@@ -357,13 +356,23 @@ function createGroupMatchDetail(m) {
         children: [
           el('div', { className: 'absolute inset-x-0 top-[5px] h-[1.5px] bg-bg-surface rounded-full' }),
           el('div', { className: 'absolute left-0 top-[5px] h-[1.5px] bg-text-muted/20 w-full rounded-full' }),
+          // Live progress fill
+          ...(isLive ? [el('div', {
+            className: 'absolute left-0 top-[5px] h-[1.5px] bg-live/50 rounded-full transition-all',
+            style: { width: pct(cursorMinute) },
+          })] : []),
           ...events.map(e => el('div', {
             className: `absolute w-1.5 h-1.5 top-1/2 -translate-y-1/2 -translate-x-1 rounded-full ${e.team === 'A' ? 'bg-accent' : 'bg-live'}`,
             style: { left: pct(e.minute) },
           })),
+          // Live cursor
+          ...(isLive ? [el('div', {
+            className: 'absolute w-1 h-2.5 top-1/2 -translate-y-1/2 -translate-x-px rounded-sm bg-live animate-pulse',
+            style: { left: pct(cursorMinute) },
+          })] : []),
         ],
       }),
-      createPenaltyDisplay(m),
+      ...(!isLive ? [createPenaltyDisplay(m)] : []),
     ],
   });
 }
