@@ -412,11 +412,15 @@ function updateDrawCountdownInPlace(msLeft) {
 /* ── Live phase ── */
 
 function renderLivePhase(state) {
-  const { liveMatches, upcoming } = state;
+  const { upcoming } = state;
   const children = [];
 
-  if (liveMatches.length > 0) {
-    startLiveTimelineRAF(liveMatches, state.cycleStart);
+  // Separate truly-live from matches in their endgame pause ("Finalizado")
+  const actuallyLive = state.liveMatches.filter(m => m.matchPhase !== 'finalizado');
+  const justFinished = state.liveMatches.filter(m => m.matchPhase === 'finalizado');
+
+  if (actuallyLive.length > 0) {
+    startLiveTimelineRAF(actuallyLive, state.cycleStart);
     children.push(
       el('div', {
         className: 'mb-6',
@@ -427,14 +431,14 @@ function renderLivePhase(state) {
               el('span', { className: 'live-dot' }),
               el('span', { text: 'En vivo', className: 'text-sm font-semibold text-live' }),
               el('span', {
-                text: `${liveMatches.length} partido${liveMatches.length > 1 ? 's' : ''}`,
+                text: `${actuallyLive.length} partido${actuallyLive.length > 1 ? 's' : ''}`,
                 className: 'text-xs text-text-muted',
               }),
             ],
           }),
           el('div', {
             className: 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3',
-            children: liveMatches.map(m => createLiveMatchCard(m, state.edition)),
+            children: actuallyLive.map(m => createLiveMatchCard(m, state.edition)),
           }),
         ],
       })
@@ -458,8 +462,10 @@ function renderLivePhase(state) {
     );
   }
 
-  if (state.recentMatches && state.recentMatches.length > 0) {
-    children.push(createRecentMatchesSection(state.recentMatches));
+  // Merge just-finished matches (endgame pause) with recent matches so they appear immediately
+  const combinedRecent = [...justFinished, ...(state.recentMatches || [])];
+  if (combinedRecent.length > 0) {
+    children.push(createRecentMatchesSection(combinedRecent));
   }
 
   const topScorers = createTopScorersWidget(state.liveEditionGoals);
