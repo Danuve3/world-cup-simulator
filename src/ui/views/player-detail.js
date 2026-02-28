@@ -75,7 +75,7 @@ export function renderPlayerDetail(container, state, teamCode, playerId, backPat
     const placeholder = identityCard.querySelector('[data-avatar]');
     if (!placeholder) return;
     const img = document.createElement('img');
-    img.className = 'w-16 h-16 rounded-full object-cover shrink-0 select-none';
+    img.className = 'w-[100px] h-[100px] rounded-full object-cover shrink-0 select-none';
     img.alt = player.name;
     img.src = url;
     img.onerror = () => { /* keep initials on broken image */ };
@@ -109,7 +109,7 @@ function createIdentityCard(player, team) {
   }[player.position];
 
   const avatar = el('div', {
-    className: `w-16 h-16 rounded-full ${avatarBg} flex items-center justify-center text-xl font-extrabold shrink-0 select-none`,
+    className: `w-[100px] h-[100px] rounded-full ${avatarBg} flex items-center justify-center text-xl font-extrabold shrink-0 select-none`,
     text: initials,
     attrs: { 'data-avatar': '' },
   });
