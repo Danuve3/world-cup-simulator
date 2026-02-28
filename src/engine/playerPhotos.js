@@ -87,7 +87,7 @@ let _manifest = null;
 async function loadManifest() {
   if (_manifest) return _manifest;
   try {
-    const res = await fetch('/players/manifest.json');
+    const res = await fetch(`${import.meta.env.BASE_URL}players/manifest.json`);
     if (!res.ok) return null;
     _manifest = await res.json();
     return _manifest;
@@ -111,7 +111,7 @@ export async function getPlayerPhotoUrl(playerId, teamCode) {
   if (!pool || pool.length === 0) return null;
 
   const idx = hashCode(`${playerId}-${teamCode}`) % pool.length;
-  return '/' + pool[idx];
+  return import.meta.env.BASE_URL + pool[idx];
 }
 
 /**
@@ -124,7 +124,7 @@ export function getPlayerPhotoUrlSync(playerId, teamCode) {
   const pool = _manifest[category];
   if (!pool || pool.length === 0) return null;
   const idx = hashCode(`${playerId}-${teamCode}`) % pool.length;
-  return '/' + pool[idx];
+  return import.meta.env.BASE_URL + pool[idx];
 }
 
 /** Pre-loads the manifest (call once at app startup). */
