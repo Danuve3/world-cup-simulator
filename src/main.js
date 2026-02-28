@@ -9,6 +9,7 @@ import { renderBracket } from './ui/views/bracket.js';
 import { renderHistory } from './ui/views/history.js';
 import { renderStats } from './ui/views/stats.js';
 import { renderTeams } from './ui/views/teams.js';
+import { renderPlayerDetail } from './ui/views/player-detail.js';
 
 let currentState = null;
 let mainContainer = null;
@@ -49,10 +50,17 @@ route('/history', (container, params) => {
   renderHistory(container, currentState, params);
 });
 
-route('/stats', (container) => {
+route('/stats', (container, params) => {
   stopConfetti();
-  currentView = 'stats';
-  renderStats(container, currentState);
+  if (params && params.length >= 3) {
+    // /stats/{edition}/{teamCode}/{playerId} → player detail with back to Stats
+    currentView = 'stats-player';
+    currentParams = params;
+    renderPlayerDetail(container, currentState, params[1], params[2], '/stats', parseInt(params[0]), 'Estadísticas');
+  } else {
+    currentView = 'stats';
+    renderStats(container, currentState);
+  }
 });
 
 currentState = getCurrentState();

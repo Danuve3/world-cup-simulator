@@ -16,7 +16,7 @@ const POS_COLOR = {
  * @param {string|null} backPath - Override back-button destination (defaults to /teams/{teamCode})
  * @param {number|null} viewEdition - Edition to look up the player in (defaults to state.edition)
  */
-export function renderPlayerDetail(container, state, teamCode, playerId, backPath = null, viewEdition = null) {
+export function renderPlayerDetail(container, state, teamCode, playerId, backPath = null, viewEdition = null, backLabel = null) {
   container.innerHTML = '';
 
   if (!state || !state.tournament) {
@@ -52,13 +52,14 @@ export function renderPlayerDetail(container, state, teamCode, playerId, backPat
 
   // Back button
   const backDest = backPath ?? `/teams/${teamCode}`;
+  const backText = backLabel ?? team.name;
   container.appendChild(
     el('button', {
       className: 'flex items-center gap-2 text-sm text-accent hover:underline cursor-pointer mb-5 font-medium',
       events: { click: () => navigate(backDest) },
       children: [
         el('span', { html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>' }),
-        el('span', { text: team.name }),
+        el('span', { text: backText }),
       ],
     })
   );

@@ -361,9 +361,10 @@ export function getStats(timestamp) {
         }
         if (entry.mins > 0) {
           if (!allTimeEditions[pid]) {
-            allTimeEditions[pid] = { player: entry.player, count: 0 };
+            allTimeEditions[pid] = { player: entry.player, count: 0, editions: [] };
           }
           allTimeEditions[pid].count++;
+          allTimeEditions[pid].editions.push(i);
         }
       }
     }
@@ -734,16 +735,16 @@ export function getLiveStats(timestamp) {
   // mostEditionsPlayer — historical + current tournament (only when complete, to avoid spoilers)
   const mergedAllTimeEditions = {};
   for (const [pid, entry] of Object.entries(baseStats.allTimeEditions || {})) {
-    mergedAllTimeEditions[pid] = { player: entry.player, count: entry.count };
+    mergedAllTimeEditions[pid] = { player: entry.player, count: entry.count, editions: [...(entry.editions || [])] };
   }
   if (tournamentComplete) {
     for (const entry of Object.values(tournament.playerStats || {})) {
       if (entry.mins > 0) {
         const pid = entry.player.id;
         if (mergedAllTimeEditions[pid]) {
-          mergedAllTimeEditions[pid] = { ...mergedAllTimeEditions[pid], count: mergedAllTimeEditions[pid].count + 1 };
+          mergedAllTimeEditions[pid] = { ...mergedAllTimeEditions[pid], count: mergedAllTimeEditions[pid].count + 1, editions: [...mergedAllTimeEditions[pid].editions, edition] };
         } else {
-          mergedAllTimeEditions[pid] = { player: entry.player, count: 1 };
+          mergedAllTimeEditions[pid] = { player: entry.player, count: 1, editions: [edition] };
         }
       }
     }

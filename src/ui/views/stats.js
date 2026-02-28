@@ -101,12 +101,15 @@ export function renderStats(container, state) {
       topEditionScorer.player.teamCode,
       topEditionScorer.player.name,
       getEditionYear(topEditionScorer.edition),
+      () => navigate(`/history/${topEditionScorer.edition}/${topEditionScorer.player.teamCode}/${topEditionScorer.player.id}`),
     ) : null,
     topMvp ? createRecordCard(
       'Más Balones de Oro',
       String(topMvp.count),
       topMvp.player.teamCode,
       topMvp.player.name,
+      null,
+      () => navigate(`/stats/${topMvp.editions[topMvp.editions.length - 1]}/${topMvp.player.teamCode}/${topMvp.player.id}`),
     ) : null,
     stats.mostGoalsInMatch ? createRecordCard(
       'Más goles en un partido',
@@ -114,12 +117,15 @@ export function renderStats(container, state) {
       stats.mostGoalsInMatch.player.teamCode,
       stats.mostGoalsInMatch.player.name,
       getEditionYear(stats.mostGoalsInMatch.edition),
+      () => navigate(`/history/${stats.mostGoalsInMatch.edition}/${stats.mostGoalsInMatch.player.teamCode}/${stats.mostGoalsInMatch.player.id}`),
     ) : null,
     stats.mostEditionsPlayer ? createRecordCard(
       'Más ediciones jugadas',
       String(stats.mostEditionsPlayer.count),
       stats.mostEditionsPlayer.player.teamCode,
       stats.mostEditionsPlayer.player.name,
+      null,
+      () => navigate(`/stats/${stats.mostEditionsPlayer.editions[stats.mostEditionsPlayer.editions.length - 1]}/${stats.mostEditionsPlayer.player.teamCode}/${stats.mostEditionsPlayer.player.id}`),
     ) : null,
   ].filter(Boolean);
 
@@ -178,9 +184,10 @@ function toEntries(map) {
     .sort((a, b) => b.count - a.count);
 }
 
-function createRecordCard(label, value, teamCode, subtitle, subtitle2) {
+function createRecordCard(label, value, teamCode, subtitle, subtitle2, onClick = null) {
   return el('div', {
-    className: 'card p-4 flex flex-col items-center text-center gap-1',
+    className: `card p-4 flex flex-col items-center text-center gap-1${onClick ? ' cursor-pointer hover:bg-bg-surface/80 transition-colors' : ''}`,
+    events: onClick ? { click: onClick } : {},
     children: [
       el('div', { text: label, className: 'text-[9px] text-text-muted font-semibold uppercase tracking-wider' }),
       el('div', {
@@ -651,7 +658,7 @@ function createAllTimeScorers(allEntries) {
     const topN = entry.totalGoals;
     return el('div', {
       className: 'flex items-center gap-1 px-4 py-2 list-row cursor-pointer hover:bg-bg-surface/50',
-      events: { click: () => navigate(`/history/${entry.editions[entry.editions.length - 1]}/${entry.player.teamCode}/${entry.player.id}`) },
+      events: { click: () => navigate(`/stats/${entry.editions[entry.editions.length - 1].edition}/${entry.player.teamCode}/${entry.player.id}`) },
       children: [
         el('span', { text: `${i + 1}`, className: `w-6 shrink-0 text-[10px] tabular-nums ${i < 3 ? 'text-accent font-bold' : 'text-text-muted'}` }),
         flag(entry.player.teamCode, 32),
