@@ -2,6 +2,7 @@ import { el, flag, getEditionYear } from '../components.js';
 import { getSquadForEdition } from '../../engine/playerEvolution.js';
 import { getPlayerCareerStats, getCompletedTournaments } from '../../engine/simulation.js';
 import { navigate } from '../router.js';
+import { getPlayerPhotoUrl } from '../../engine/playerPhotos.js';
 
 const POS_LABEL = { GK: 'Portero', DF: 'Defensa', MF: 'Centrocampista', FW: 'Delantero' };
 const POS_COLOR = {
@@ -65,7 +66,21 @@ export function renderPlayerDetail(container, state, teamCode, playerId, backPat
   );
 
   // Identity card
-  container.appendChild(createIdentityCard(player, team));
+  const identityCard = createIdentityCard(player, team);
+  container.appendChild(identityCard);
+
+  // Swap initials avatar for AI photo once loaded
+  getPlayerPhotoUrl(playerId, teamCode).then(url => {
+    if (!url) return;
+    const placeholder = identityCard.querySelector('[data-avatar]');
+    if (!placeholder) return;
+    const img = document.createElement('img');
+    img.className = 'w-16 h-16 rounded-full object-cover shrink-0 select-none';
+    img.alt = player.name;
+    img.src = url;
+    img.onerror = () => { /* keep initials on broken image */ };
+    placeholder.replaceWith(img);
+  });
 
   // Career stats
   const careerStats = getPlayerCareerStats(playerId, teamCode, state.timestamp, state.liveEditionGoals);
@@ -96,6 +111,7 @@ function createIdentityCard(player, team) {
   const avatar = el('div', {
     className: `w-16 h-16 rounded-full ${avatarBg} flex items-center justify-center text-xl font-extrabold shrink-0 select-none`,
     text: initials,
+    attrs: { 'data-avatar': '' },
   });
 
   // Format date of birth and age
