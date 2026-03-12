@@ -667,7 +667,7 @@ function createAllTimeScorers(allEntries) {
           children: [
             el('div', { text: entry.player.name, className: 'text-xs font-medium truncate' }),
             el('div', {
-              text: `${entry.editions.length} mundial${entry.editions.length !== 1 ? 'es' : ''}`,
+              text: `${entry.editionsPlayed ?? entry.editions.length} mundial${(entry.editionsPlayed ?? entry.editions.length) !== 1 ? 'es' : ''}`,
               className: 'text-[9px] text-text-muted',
             }),
           ],

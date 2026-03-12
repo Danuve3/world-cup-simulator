@@ -413,7 +413,8 @@ export function getStats(timestamp) {
   // Build sorted lists
 
   const goalscorersRanking = Object.values(allTimeGoalscorers)
-    .sort((a, b) => b.totalGoals - a.totalGoals || b.player.rating - a.player.rating);
+    .sort((a, b) => b.totalGoals - a.totalGoals || b.player.rating - a.player.rating)
+    .map(entry => ({ ...entry, editionsPlayed: allTimeEditions[entry.player.id]?.count ?? entry.editions.length }));
 
   const mvpRanking = Object.values(allTimeMvps)
     .sort((a, b) => b.count - a.count);
@@ -767,16 +768,24 @@ export function getLiveStats(timestamp) {
   }
 
   // Goalscorers ranking — only goals from played matches
+  const currentEditionParticipantIds = new Set(
+    Object.entries(tournament.playerStats ?? {})
+      .filter(([, e]) => e.mins > 0)
+      .map(([pid]) => pid)
+  );
   const mergedGoalscorers = {};
   for (const entry of baseStats.goalscorersRanking) {
-    mergedGoalscorers[entry.player.id] = { player: entry.player, totalGoals: entry.totalGoals, editions: [...entry.editions] };
+    const pid = entry.player.id;
+    const extraEdition = currentEditionParticipantIds.has(pid) ? 1 : 0;
+    mergedGoalscorers[pid] = { player: entry.player, totalGoals: entry.totalGoals, editions: [...entry.editions], editionsPlayed: entry.editionsPlayed + extraEdition };
   }
   for (const [pid, entry] of Object.entries(currentEditionPlayerGoals)) {
     if (mergedGoalscorers[pid]) {
       mergedGoalscorers[pid].totalGoals += entry.goals;
       mergedGoalscorers[pid].editions.push({ edition, goals: entry.goals });
     } else {
-      mergedGoalscorers[pid] = { player: entry.player, totalGoals: entry.goals, editions: [{ edition, goals: entry.goals }] };
+      const historicalPlayed = baseStats.allTimeEditions?.[pid]?.count ?? 0;
+      mergedGoalscorers[pid] = { player: entry.player, totalGoals: entry.goals, editions: [{ edition, goals: entry.goals }], editionsPlayed: historicalPlayed + 1 };
     }
   }
   const liveGoalscorersRanking = Object.values(mergedGoalscorers)
