@@ -248,8 +248,10 @@ export function getStats(timestamp) {
   // Player stats aggregation
   const allTimeGoalscorers = {}; // playerId → { player, totalGoals, editions: [] }
   const allTimeMvps = {};        // playerId → { player, count, editions: [] }
+  const allTimeGoldenBoots = {}; // playerId → { player, count, editions: [] }
   const topScorersByEdition = []; // { edition, player, goals, host }
   const allTimeEditions = {};    // playerId → { player, count }
+  const allTimeMatches = {};     // playerId → { player, matches, mins }
   let mostGoalsInMatch = null;   // { player, goals, match, edition }
 
   for (let i = 0; i < edition; i++) {
@@ -370,6 +372,14 @@ export function getStats(timestamp) {
           allTimeEditions[pid].count++;
           allTimeEditions[pid].editions.push(i);
         }
+        if (entry.matches > 0) {
+          if (!allTimeMatches[pid]) {
+            allTimeMatches[pid] = { player: entry.player, matches: 0, mins: 0, lastEdition: i };
+          }
+          allTimeMatches[pid].matches += entry.matches;
+          allTimeMatches[pid].mins += entry.mins;
+          allTimeMatches[pid].lastEdition = i;
+        }
       }
     }
 
@@ -401,6 +411,13 @@ export function getStats(timestamp) {
         player: t.topScorer.player,
         goals: t.topScorer.goals,
       });
+      const tspid = t.topScorer.player.id;
+      if (!allTimeGoldenBoots[tspid]) {
+        allTimeGoldenBoots[tspid] = { player: t.topScorer.player, count: 0, editions: [], bootGoals: 0 };
+      }
+      allTimeGoldenBoots[tspid].count++;
+      allTimeGoldenBoots[tspid].editions.push(i);
+      allTimeGoldenBoots[tspid].bootGoals += t.topScorer.goals;
     }
 
     // MVP records
@@ -421,7 +438,7 @@ export function getStats(timestamp) {
     .map(entry => ({ ...entry, editionsPlayed: allTimeEditions[entry.player.id]?.count ?? entry.editions.length }));
 
   const mvpRanking = Object.values(allTimeMvps)
-    .sort((a, b) => b.count - a.count);
+    .sort((a, b) => b.count - a.count || b.player.rating - a.player.rating);
 
   // Most goals in a single edition (from topScorersByEdition)
   const topSingleEditionScorers = [...topScorersByEdition]
@@ -432,6 +449,14 @@ export function getStats(timestamp) {
   const mostEditionsPlayer = Object.values(allTimeEditions)
     .sort((a, b) => b.count - a.count)[0] ?? null;
 
+  // Most matches played (tiebreaker: most minutes)
+  const mostMatchesPlayer = Object.values(allTimeMatches)
+    .sort((a, b) => b.matches - a.matches || b.mins - a.mins)[0] ?? null;
+
+  // Most golden boots (tiebreaker: most goals scored in winning editions)
+  const mostGoldenBootsPlayer = Object.values(allTimeGoldenBoots)
+    .sort((a, b) => b.count - a.count || b.bootGoals - a.bootGoals)[0] ?? null;
+
   return {
     titles,
     participations,
@@ -440,7 +465,11 @@ export function getStats(timestamp) {
     topSingleEditionScorers,
     mostGoalsInMatch,
     mostEditionsPlayer,
+    mostMatchesPlayer,
+    mostGoldenBootsPlayer,
     allTimeEditions,
+    allTimeMatches,
+    allTimeGoldenBoots,
     totalGoals,
     maxGoalsTournament,
     minGoalsTournament: minGoalsTournament.edition >= 0 ? minGoalsTournament : null,
@@ -761,6 +790,28 @@ export function getLiveStats(timestamp) {
   const liveMostEditionsPlayer = Object.values(mergedAllTimeEditions)
     .sort((a, b) => b.count - a.count)[0] ?? null;
 
+  // mostMatchesPlayer — historical + current tournament (only when complete, to avoid spoilers)
+  const mergedAllTimeMatches = {};
+  for (const [pid, entry] of Object.entries(baseStats.allTimeMatches || {})) {
+    mergedAllTimeMatches[pid] = { player: entry.player, matches: entry.matches, mins: entry.mins, lastEdition: entry.lastEdition };
+  }
+  if (tournamentComplete) {
+    for (const entry of Object.values(tournament.playerStats || {})) {
+      if (entry.matches > 0) {
+        const pid = entry.player.id;
+        if (mergedAllTimeMatches[pid]) {
+          mergedAllTimeMatches[pid].matches += entry.matches;
+          mergedAllTimeMatches[pid].mins += entry.mins;
+          mergedAllTimeMatches[pid].lastEdition = edition;
+        } else {
+          mergedAllTimeMatches[pid] = { player: entry.player, matches: entry.matches, mins: entry.mins, lastEdition: edition };
+        }
+      }
+    }
+  }
+  const liveMostMatchesPlayer = Object.values(mergedAllTimeMatches)
+    .sort((a, b) => b.matches - a.matches || b.mins - a.mins)[0] ?? null;
+
   // highestScoring — only played matches
   const currentHighestScoring = playedMatches
     .filter(m => (m.goalsA + m.goalsB) >= 5)
@@ -799,6 +850,24 @@ export function getLiveStats(timestamp) {
   const liveGoalscorersRanking = Object.values(mergedGoalscorers)
     .sort((a, b) => b.totalGoals - a.totalGoals || b.player.rating - a.player.rating);
 
+  // mostGoldenBootsPlayer — historical + current tournament (only when complete, to avoid spoilers)
+  const mergedAllTimeGoldenBoots = {};
+  for (const [pid, entry] of Object.entries(baseStats.allTimeGoldenBoots || {})) {
+    mergedAllTimeGoldenBoots[pid] = { player: entry.player, count: entry.count, editions: [...entry.editions], bootGoals: entry.bootGoals ?? 0 };
+  }
+  if (tournamentComplete && tournament.topScorer) {
+    const pid = tournament.topScorer.player.id;
+    if (mergedAllTimeGoldenBoots[pid]) {
+      mergedAllTimeGoldenBoots[pid].count++;
+      mergedAllTimeGoldenBoots[pid].editions.push(edition);
+      mergedAllTimeGoldenBoots[pid].bootGoals += tournament.topScorer.goals;
+    } else {
+      mergedAllTimeGoldenBoots[pid] = { player: tournament.topScorer.player, count: 1, editions: [edition], bootGoals: tournament.topScorer.goals };
+    }
+  }
+  const liveMostGoldenBootsPlayer = Object.values(mergedAllTimeGoldenBoots)
+    .sort((a, b) => b.count - a.count || b.bootGoals - a.bootGoals)[0] ?? null;
+
   // Merge current edition top scorer into topSingleEditionScorers — from played matches only
   const liveTopSingleEditionScorers = [...(baseStats.topSingleEditionScorers || [])];
   const currentTopScorer = Object.values(currentEditionPlayerGoals)
@@ -828,7 +897,7 @@ export function getLiveStats(timestamp) {
     }
   }
   const liveMvpRanking = Object.values(mergedMvps)
-    .sort((a, b) => b.count - a.count);
+    .sort((a, b) => b.count - a.count || b.player.rating - a.player.rating);
 
   return {
     ...baseStats,
@@ -847,6 +916,8 @@ export function getLiveStats(timestamp) {
     fewestGoalsTeam: liveFewestGoalsTeam,
     mostGoalsInMatch: liveMostGoalsInMatch,
     mostEditionsPlayer: liveMostEditionsPlayer,
+    mostMatchesPlayer: liveMostMatchesPlayer,
+    mostGoldenBootsPlayer: liveMostGoldenBootsPlayer,
     hasLiveData: currentMatchCount > 0 || liveMatchesWithScores.length > 0,
     allTimeRanking: liveAllTimeRanking,
     liveTeamCodes,

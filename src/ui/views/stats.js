@@ -58,11 +58,12 @@ export function renderStats(container, state) {
     })
   );
 
-  // Records
   const topEditionScorer = stats.topSingleEditionScorers?.[0] ?? null;
   const topMvp = stats.mvpRanking?.[0] ?? null;
+  const topGoldenBoot = stats.mostGoldenBootsPlayer ?? null;
 
-  const records = [
+  // — Estadísticas de torneos —
+  const tournamentRecords = [
     stats.maxGoalsTournament.edition >= 0 ? createRecordCard(
       'Mundial con más goles',
       String(stats.maxGoalsTournament.goals),
@@ -75,6 +76,23 @@ export function renderStats(container, state) {
       stats.minGoalsTournament.host.code,
       `${stats.minGoalsTournament.host.name} ${getEditionYear(stats.minGoalsTournament.edition)}`,
     ) : null,
+  ].filter(Boolean);
+
+  if (tournamentRecords.length > 0) {
+    container.appendChild(el('p', { text: 'Estadísticas de torneos', className: 'section-title mt-6' }));
+    container.appendChild(el('div', { className: 'grid grid-cols-2 md:grid-cols-4 gap-3 mb-4', children: tournamentRecords }));
+  }
+
+  if (stats.biggestWins.length > 0) {
+    container.appendChild(createMatchList('Mayores goleadas', stats.biggestWins.slice(0, 3)));
+  }
+
+  if (stats.highestScoring && stats.highestScoring.length > 0) {
+    container.appendChild(createMatchList('Partidos con más goles', stats.highestScoring.slice(0, 3)));
+  }
+
+  // — Estadísticas de equipo —
+  const teamRecords = [
     stats.mostGoalsTeam ? (() => {
       const host = simulateTournament(stats.mostGoalsTeam.edition).host;
       return createRecordCard(
@@ -95,6 +113,33 @@ export function renderStats(container, state) {
         `${host.name} ${getEditionYear(stats.fewestGoalsTeam.edition)}`,
       );
     })() : null,
+  ].filter(Boolean);
+
+  const titleEntries = toEntries(stats.titles);
+  const partEntries = toEntries(stats.participations);
+  const rankingCards = [
+    titleEntries.length > 0 ? createRankingCard('Más títulos mundiales', titleEntries, true) : null,
+    partEntries.length > 0 ? createRankingCard('Más participaciones', partEntries, false) : null,
+  ].filter(Boolean);
+
+  if (teamRecords.length > 0 || rankingCards.length > 0 || (stats.allTimeRanking && stats.allTimeRanking.length > 0)) {
+    container.appendChild(el('p', { text: 'Estadísticas de equipo', className: 'section-title mt-6' }));
+  }
+
+  if (teamRecords.length > 0) {
+    container.appendChild(el('div', { className: 'grid grid-cols-2 md:grid-cols-4 gap-3 mb-4', children: teamRecords }));
+  }
+
+  if (rankingCards.length > 0) {
+    container.appendChild(el('div', { className: 'grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6', children: rankingCards }));
+  }
+
+  if (stats.allTimeRanking && stats.allTimeRanking.length > 0) {
+    container.appendChild(createAllTimeRanking(stats.allTimeRanking, stats.liveTeamCodes, stats.rankingDeltas));
+  }
+
+  // — Estadísticas individuales —
+  const individualRecords = [
     topEditionScorer ? createRecordCard(
       'Más goles en un Mundial',
       String(topEditionScorer.goals),
@@ -102,6 +147,22 @@ export function renderStats(container, state) {
       topEditionScorer.player.name,
       getEditionYear(topEditionScorer.edition),
       () => navigate(`/history/${topEditionScorer.edition}/${topEditionScorer.player.teamCode}/${topEditionScorer.player.id}`),
+    ) : null,
+    stats.mostGoalsInMatch ? createRecordCard(
+      'Más goles en un partido',
+      String(stats.mostGoalsInMatch.goals),
+      stats.mostGoalsInMatch.player.teamCode,
+      stats.mostGoalsInMatch.player.name,
+      getEditionYear(stats.mostGoalsInMatch.edition),
+      () => navigate(`/history/${stats.mostGoalsInMatch.edition}/${stats.mostGoalsInMatch.player.teamCode}/${stats.mostGoalsInMatch.player.id}`),
+    ) : null,
+    topGoldenBoot ? createRecordCard(
+      'Más Botas de Oro',
+      String(topGoldenBoot.count),
+      topGoldenBoot.player.teamCode,
+      topGoldenBoot.player.name,
+      null,
+      () => navigate(`/stats/${topGoldenBoot.editions[topGoldenBoot.editions.length - 1]}/${topGoldenBoot.player.teamCode}/${topGoldenBoot.player.id}`),
     ) : null,
     topMvp ? createRecordCard(
       'Más Balones de Oro',
@@ -111,13 +172,13 @@ export function renderStats(container, state) {
       null,
       () => navigate(`/stats/${topMvp.editions[topMvp.editions.length - 1]}/${topMvp.player.teamCode}/${topMvp.player.id}`),
     ) : null,
-    stats.mostGoalsInMatch ? createRecordCard(
-      'Más goles en un partido',
-      String(stats.mostGoalsInMatch.goals),
-      stats.mostGoalsInMatch.player.teamCode,
-      stats.mostGoalsInMatch.player.name,
-      getEditionYear(stats.mostGoalsInMatch.edition),
-      () => navigate(`/history/${stats.mostGoalsInMatch.edition}/${stats.mostGoalsInMatch.player.teamCode}/${stats.mostGoalsInMatch.player.id}`),
+    stats.mostMatchesPlayer ? createRecordCard(
+      'Más partidos jugados',
+      String(stats.mostMatchesPlayer.matches),
+      stats.mostMatchesPlayer.player.teamCode,
+      stats.mostMatchesPlayer.player.name,
+      null,
+      () => navigate(`/stats/${stats.mostMatchesPlayer.lastEdition}/${stats.mostMatchesPlayer.player.teamCode}/${stats.mostMatchesPlayer.player.id}`),
     ) : null,
     stats.mostEditionsPlayer ? createRecordCard(
       'Más ediciones jugadas',
@@ -129,50 +190,15 @@ export function renderStats(container, state) {
     ) : null,
   ].filter(Boolean);
 
-  if (records.length > 0) {
-    container.appendChild(
-      el('div', {
-        className: 'grid grid-cols-2 md:grid-cols-4 gap-3 mb-6',
-        children: records,
-      })
-    );
+  if (individualRecords.length > 0 || (stats.goalscorersRanking && stats.goalscorersRanking.length > 0)) {
+    container.appendChild(el('p', { text: 'Estadísticas individuales', className: 'section-title mt-6' }));
   }
 
-  // Rankings
-  const titleEntries = toEntries(stats.titles);
-  const partEntries = toEntries(stats.participations);
-
-  const rankingCards = [
-    titleEntries.length > 0 ? createRankingCard('M\u00e1s t\u00edtulos mundiales', titleEntries, true) : null,
-    partEntries.length > 0 ? createRankingCard('M\u00e1s participaciones', partEntries, false) : null,
-  ].filter(Boolean);
-
-  if (rankingCards.length > 0) {
-    container.appendChild(
-      el('div', {
-        className: 'grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6',
-        children: rankingCards,
-      })
-    );
+  if (individualRecords.length > 0) {
+    container.appendChild(el('div', { className: 'grid grid-cols-2 md:grid-cols-4 gap-3 mb-6', children: individualRecords }));
   }
 
-  if (stats.allTimeRanking && stats.allTimeRanking.length > 0) {
-    container.appendChild(createAllTimeRanking(stats.allTimeRanking, stats.liveTeamCodes, stats.rankingDeltas));
-  }
-
-  if (stats.biggestWins.length > 0) {
-    container.appendChild(createMatchList('Mayores goleadas', stats.biggestWins.slice(0, 3)));
-  }
-
-  if (stats.highestScoring && stats.highestScoring.length > 0) {
-    container.appendChild(createMatchList('Partidos con m\u00e1s goles', stats.highestScoring.slice(0, 3)));
-  }
-
-  // All-time top scorers (top 5, expandable to 50)
   if (stats.goalscorersRanking && stats.goalscorersRanking.length > 0) {
-    container.appendChild(
-      el('p', { text: 'Goleadores históricos', className: 'section-title mt-6' })
-    );
     container.appendChild(createAllTimeScorers(stats.goalscorersRanking));
   }
 }
