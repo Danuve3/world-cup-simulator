@@ -238,7 +238,7 @@ export function getStats(timestamp) {
   let maxGoalsTournament = { edition: -1, goals: 0 };
   let minGoalsTournament = { edition: -1, goals: Infinity };
   let mostGoalsTeam = { edition: -1, team: null, goals: 0 };
-  let fewestGoalsTeam = { edition: -1, team: null, goals: Infinity };
+  let fewestGoalsTeam = { edition: -1, team: null, goals: Infinity, ga: -Infinity };
   const biggestWins = [];
   const highestScoring = [];
   const allTimeRanking = {};
@@ -318,8 +318,12 @@ export function getStats(timestamp) {
           extraTime: m.extraTime,
         });
       }
-      teamGoals[m.teamA.code] = (teamGoals[m.teamA.code] || 0) + m.goalsA;
-      teamGoals[m.teamB.code] = (teamGoals[m.teamB.code] || 0) + m.goalsB;
+      if (!teamGoals[m.teamA.code]) teamGoals[m.teamA.code] = { gf: 0, ga: 0 };
+      teamGoals[m.teamA.code].gf += m.goalsA;
+      teamGoals[m.teamA.code].ga += m.goalsB;
+      if (!teamGoals[m.teamB.code]) teamGoals[m.teamB.code] = { gf: 0, ga: 0 };
+      teamGoals[m.teamB.code].gf += m.goalsB;
+      teamGoals[m.teamB.code].ga += m.goalsA;
 
       // All-time ranking
       for (const side of ['A', 'B']) {
@@ -338,13 +342,13 @@ export function getStats(timestamp) {
         else r.lost++;
       }
     }
-    for (const [code, goals] of Object.entries(teamGoals)) {
+    for (const [code, { gf, ga }] of Object.entries(teamGoals)) {
       const team = t.draw.groups.flat().find(tm => tm.code === code);
-      if (goals > mostGoalsTeam.goals) {
-        mostGoalsTeam = { edition: i, team, goals };
+      if (gf > mostGoalsTeam.goals) {
+        mostGoalsTeam = { edition: i, team, goals: gf };
       }
-      if (goals < fewestGoalsTeam.goals) {
-        fewestGoalsTeam = { edition: i, team, goals };
+      if (gf < fewestGoalsTeam.goals || (gf === fewestGoalsTeam.goals && ga > fewestGoalsTeam.ga)) {
+        fewestGoalsTeam = { edition: i, team, goals: gf, ga };
       }
     }
 
@@ -696,20 +700,24 @@ export function getLiveStats(timestamp) {
   // mostGoalsTeam / fewestGoalsTeam — use only played matches (no spoilers)
   const currentTeamGoals = {};
   for (const m of playedMatches) {
-    currentTeamGoals[m.teamA.code] = (currentTeamGoals[m.teamA.code] || 0) + m.goalsA;
-    currentTeamGoals[m.teamB.code] = (currentTeamGoals[m.teamB.code] || 0) + m.goalsB;
+    if (!currentTeamGoals[m.teamA.code]) currentTeamGoals[m.teamA.code] = { gf: 0, ga: 0 };
+    currentTeamGoals[m.teamA.code].gf += m.goalsA;
+    currentTeamGoals[m.teamA.code].ga += m.goalsB;
+    if (!currentTeamGoals[m.teamB.code]) currentTeamGoals[m.teamB.code] = { gf: 0, ga: 0 };
+    currentTeamGoals[m.teamB.code].gf += m.goalsB;
+    currentTeamGoals[m.teamB.code].ga += m.goalsA;
   }
   let liveMostGoalsTeam = baseStats.mostGoalsTeam ? { ...baseStats.mostGoalsTeam } : null;
   let liveFewestGoalsTeam = baseStats.fewestGoalsTeam ? { ...baseStats.fewestGoalsTeam } : null;
   const flatTeams = tournament.draw.groups.flat();
-  for (const [code, goals] of Object.entries(currentTeamGoals)) {
+  for (const [code, { gf, ga }] of Object.entries(currentTeamGoals)) {
     const team = flatTeams.find(t => t.code === code);
     if (!team) continue;
-    if (!liveMostGoalsTeam || goals > liveMostGoalsTeam.goals) {
-      liveMostGoalsTeam = { edition, team, goals };
+    if (!liveMostGoalsTeam || gf > liveMostGoalsTeam.goals) {
+      liveMostGoalsTeam = { edition, team, goals: gf };
     }
-    if (!liveFewestGoalsTeam || goals < liveFewestGoalsTeam.goals) {
-      liveFewestGoalsTeam = { edition, team, goals };
+    if (!liveFewestGoalsTeam || gf < liveFewestGoalsTeam.goals || (gf === liveFewestGoalsTeam.goals && ga > (liveFewestGoalsTeam.ga ?? -Infinity))) {
+      liveFewestGoalsTeam = { edition, team, goals: gf, ga };
     }
   }
 
